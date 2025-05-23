@@ -144,22 +144,11 @@ async function getAllStockSymbols() {
     
     console.log(`Found ${commonStocks.length} common stocks on NYSE and NASDAQ`);
     
-    // For Heroku, process in batches to avoid timeouts
-    // Get batch size from environment variable or default to 500
-    const batchSize = process.env.IMPORT_BATCH_SIZE ? parseInt(process.env.IMPORT_BATCH_SIZE) : 500;
-    // Get batch index from environment variable or default to 0 (first batch)
-    const batchIndex = process.env.IMPORT_BATCH_INDEX ? parseInt(process.env.IMPORT_BATCH_INDEX) : 0;
+    // For Heroku, limit to a reasonable number to avoid timeouts
+    const limitedStocks = commonStocks.slice(0, 100);
+    console.log(`Limited to ${limitedStocks.length} stocks for Heroku compatibility`);
     
-    // Calculate start and end indices for current batch
-    const startIndex = batchIndex * batchSize;
-    const endIndex = Math.min(startIndex + batchSize, commonStocks.length);
-    
-    // Get stocks for current batch
-    const batchStocks = commonStocks.slice(startIndex, endIndex);
-    console.log(`Processing batch ${batchIndex + 1} of ${Math.ceil(commonStocks.length / batchSize)}`);
-    console.log(`Importing stocks ${startIndex + 1} to ${endIndex} (${batchStocks.length} stocks)`);
-    
-    return batchStocks.map(stock => ({
+    return limitedStocks.map(stock => ({
       symbol: stock.symbol,
       name: stock.name,
       exchange: stock.exchangeShortName
