@@ -1,159 +1,167 @@
+/**
+ * Modified server.js for Financial Modeling Prep API
+ * 
+ * This server file has been updated to use FMP API instead of Polygon
+ */
+
 const express = require('express');
-const cors = require('cors');
-const path = require('path');
 const mongoose = require('mongoose');
-const axios = require('axios');
+const path = require('path');
+const cors = require('cors');
 require('dotenv').config();
 
-// Import database connection
-const { connectDB } = require('./db/mongoose');
-const Stock = require('./db/models/Stock');
+// Import FMP service
+const fmpApiService = require('./fmpApiService');
 
-// Initialize Express app
-const app = express();
+// MongoDB connection
+const MONGODB_URI = process.env.MONGODB_URI || 'mongodb://localhost:27017/stocksDB';
 const PORT = process.env.PORT || 3001;
+
+// Connect to MongoDB
+mongoose.connect(MONGODB_URI, {
+  useNewUrlParser: true,
+  useUnifiedTopology: true
+})
+.then(() => console.log('Connected to MongoDB'))
+.catch(err => console.error('MongoDB connection error:', err));
+
+// Stock model schema
+const stockSchema = new mongoose.Schema({
+  symbol: { type: String, required: true, unique: true },
+  name: String,
+  exchange: String,
+  sector: String,
+  industry: String,
+  price: Number,
+  marketCap: Number,
+  avgDollarVolume: Number,
+  netDebtToEBITDA: Number,
+  evToEBIT: Number,
+  rotce: Number,
+  fcfToNetIncome: Number,
+  shareCountGrowth: Number,
+  priceToBook: Number,
+  insiderOwnership: Number,
+  revenueGrowth: Number,
+  score: Number,
+  lastUpdated: { type: Date, default: Date.now }
+});
+
+// Create or get the Stock model
+let Stock;
+try {
+  Stock = mongoose.model('Stock');
+} catch (e) {
+  Stock = mongoose.model('Stock', stockSchema);
+}
+
+// Create Express app
+const app = express();
 
 // Middleware
 app.use(cors());
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Connect to MongoDB
-connectDB()
-  .then(() => console.log('Connected to MongoDB'))
-  .catch(err => console.error('MongoDB connection error:', err));
-
-// API Routes
-// Get all stocks with optional filtering
+// API routes
+// Get paginated stocks
 app.get('/api/stocks', async (req, res) => {
   try {
-    const stocks = await Stock.find({});
-    res.json(stocks);
+    const page = parseInt(req.query.page) || 1;
+    const limit = parseInt(req.query.limit) || 50;
+    const skip = (page - 1) * limit;
+    
+    // Get filters from query params
+    const filters = {};
+    
+    if (req.query.sector) {
+      filters.sector = req.query.sector;
+    }
+    
+    if (req.query.minMarketCap) {
+      filters.marketCap = { $gte: parseFloat(req.query.minMarketCap) };
+    }
+    
+    if (req.query.maxDebt) {
+      filters.netDebtToEBITDA = { $lte: parseFloat(req.query.maxDebt) };
+    }
+    
+    // Get total count for pagination
+    const total = await Stock.countDocuments(filters);
+    
+    // Get stocks
+    const stocks = await Stock.find(filters)
+      .sort({ score: -1 })
+      .skip(skip)
+      .limit(limit);
+    
+    res.json({
+      page,
+      limit,
+      total,
+      totalPages: Math.ceil(total / limit),
+      stocks
+    });
   } catch (error) {
     console.error('Error fetching stocks:', error);
     res.status(500).json({ error: 'Failed to fetch stocks' });
   }
 });
 
-// Get stats
-app.get('/api/stats', async (req, res) => {
+// Get sectors for filter dropdown
+app.get('/api/sectors', async (req, res) => {
   try {
-    const total = await Stock.countDocuments();
-    const nyse = await Stock.countDocuments({ exchange: 'XNYS' });
-    const nasdaq = await Stock.countDocuments({ exchange: 'XNAS' });
-    
-    // Get the most recently updated stock
-    const latestStock = await Stock.findOne().sort({ lastUpdated: -1 });
-    
-    res.json({
-      total,
-      nyse,
-      nasdaq,
-      lastUpdated: latestStock ? latestStock.lastUpdated : null
-    });
+    const sectors = await Stock.distinct('sector');
+    res.json(sectors.filter(Boolean).sort());
   } catch (error) {
-    console.error('Error fetching stats:', error);
-    res.status(500).json({ error: 'Failed to fetch stats' });
+    console.error('Error fetching sectors:', error);
+    res.status(500).json({ error: 'Failed to fetch sectors' });
   }
 });
 
-// Health check endpoint
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok', timestamp: new Date() });
-});
-
-// Refresh a single stock
-app.post('/api/refresh/stock', async (req, res) => {
+// Get a single stock by symbol
+app.get('/api/stocks/:symbol', async (req, res) => {
   try {
-    const { symbol } = req.body;
-    
-    if (!symbol) {
-      return res.status(400).json({ error: 'Symbol is required' });
-    }
-    
-    // Fetch stock details from Polygon.io
-    const POLYGON_API_KEY = process.env.POLYGON_API_KEY;
-    
-    // Fetch current price
-    const priceResponse = await axios.get(
-      `https://api.polygon.io/v2/aggs/ticker/${symbol}/prev?apiKey=${POLYGON_API_KEY}`
-    );
-    
-    // Fetch financials
-    const financialsResponse = await axios.get(
-      `https://api.polygon.io/vX/reference/financials?ticker=${symbol}&apiKey=${POLYGON_API_KEY}`
-    );
-    
-    // Extract price data
-    let price = 0;
-    let marketCap = 0;
-    
-    if (priceResponse.data.results && priceResponse.data.results.length > 0) {
-      price = priceResponse.data.results[0].c; // Closing price
-    }
-    
-    // Extract financial data
-    let netDebtToEBITDA = 0;
-    let evToEBIT = 0;
-    let rotce = 0;
-    
-    if (financialsResponse.data.results && financialsResponse.data.results.length > 0) {
-      const financials = financialsResponse.data.results[0];
-      
-      // Calculate market cap
-      if (financials.shares_outstanding && price) {
-        marketCap = financials.shares_outstanding * price;
-      }
-      
-      // Extract other metrics if available
-      if (financials.financials) {
-        const fin = financials.financials;
-        
-        // Net Debt to EBITDA
-        if (fin.debt && fin.ebitda) {
-          netDebtToEBITDA = fin.debt / fin.ebitda;
-        }
-        
-        // EV to EBIT
-        if (fin.enterprise_value && fin.ebit) {
-          evToEBIT = fin.enterprise_value / fin.ebit;
-        }
-        
-        // Return on Tangible Capital Employed
-        if (fin.net_income && fin.tangible_assets) {
-          rotce = fin.net_income / fin.tangible_assets;
-        }
-      }
-    }
-    
-    // Calculate score
-    const score = calculateScore({
-      marketCap,
-      netDebtToEBITDA,
-      evToEBIT,
-      rotce
-    });
-    
-    // Update or create stock in database
-    const stock = await Stock.findOneAndUpdate(
-      { symbol },
-      {
-        price,
-        marketCap,
-        netDebtToEBITDA,
-        evToEBIT,
-        rotce,
-        score,
-        lastUpdated: new Date()
-      },
-      { new: true }
-    );
+    const stock = await Stock.findOne({ symbol: req.params.symbol.toUpperCase() });
     
     if (!stock) {
       return res.status(404).json({ error: 'Stock not found' });
     }
     
-    res.json({ success: true, stock });
+    res.json(stock);
+  } catch (error) {
+    console.error('Error fetching stock:', error);
+    res.status(500).json({ error: 'Failed to fetch stock' });
+  }
+});
+
+// Refresh a single stock
+app.post('/api/refresh/:symbol', async (req, res) => {
+  try {
+    const symbol = req.params.symbol.toUpperCase();
+    
+    // Check if stock exists
+    const stock = await Stock.findOne({ symbol });
+    
+    if (!stock) {
+      return res.status(404).json({ error: 'Stock not found' });
+    }
+    
+    // Get updated data from FMP
+    const stockData = await fmpApiService.getStockData(symbol);
+    
+    if (!stockData) {
+      return res.status(404).json({ error: 'Failed to fetch updated data' });
+    }
+    
+    // Update stock in database
+    const updatedStock = await Stock.findOneAndUpdate(
+      { symbol },
+      stockData,
+      { new: true }
+    );
+    
+    res.json({ success: true, stock: updatedStock });
   } catch (error) {
     console.error('Error refreshing stock:', error);
     res.status(500).json({ error: 'Failed to refresh stock' });
@@ -192,119 +200,26 @@ app.get('*', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Helper function to calculate score
-function calculateScore(details) {
-  let score = 0;
-  
-  // Market cap score (0-20)
-  if (details.marketCap > 10000000000) score += 20; // $10B+
-  else if (details.marketCap > 2000000000) score += 15; // $2B+
-  else if (details.marketCap > 300000000) score += 10; // $300M+
-  else score += 5;
-  
-  // Debt score (0-20)
-  if (details.netDebtToEBITDA < 1) score += 20;
-  else if (details.netDebtToEBITDA < 2) score += 15;
-  else if (details.netDebtToEBITDA < 3) score += 10;
-  else score += 5;
-  
-  // Valuation score (0-20)
-  if (details.evToEBIT > 0 && details.evToEBIT < 10) score += 20;
-  else if (details.evToEBIT > 0 && details.evToEBIT < 15) score += 15;
-  else if (details.evToEBIT > 0 && details.evToEBIT < 20) score += 10;
-  else score += 5;
-  
-  // Profitability score (0-20)
-  if (details.rotce > 0.2) score += 20;
-  else if (details.rotce > 0.15) score += 15;
-  else if (details.rotce > 0.1) score += 10;
-  else score += 5;
-  
-  // Add random factor (0-20) for demonstration
-  score += Math.floor(Math.random() * 20);
-  
-  return score;
-}
-
 // Helper function to refresh stocks in background
 async function refreshStocksInBackground(stocks) {
-  const POLYGON_API_KEY = process.env.POLYGON_API_KEY;
-  
   for (const stock of stocks) {
     try {
-      // Fetch current price
-      const priceResponse = await axios.get(
-        `https://api.polygon.io/v2/aggs/ticker/${stock.symbol}/prev?apiKey=${POLYGON_API_KEY}`
-      );
+      // Get updated data from FMP
+      const stockData = await fmpApiService.getStockData(stock.symbol);
       
-      // Fetch financials
-      const financialsResponse = await axios.get(
-        `https://api.polygon.io/vX/reference/financials?ticker=${stock.symbol}&apiKey=${POLYGON_API_KEY}`
-      );
-      
-      // Extract price data
-      let price = 0;
-      let marketCap = 0;
-      
-      if (priceResponse.data.results && priceResponse.data.results.length > 0) {
-        price = priceResponse.data.results[0].c; // Closing price
+      if (!stockData) {
+        console.log(`No data found for ${stock.symbol}, skipping`);
+        continue;
       }
-      
-      // Extract financial data
-      let netDebtToEBITDA = 0;
-      let evToEBIT = 0;
-      let rotce = 0;
-      
-      if (financialsResponse.data.results && financialsResponse.data.results.length > 0) {
-        const financials = financialsResponse.data.results[0];
-        
-        // Calculate market cap
-        if (financials.shares_outstanding && price) {
-          marketCap = financials.shares_outstanding * price;
-        }
-        
-        // Extract other metrics if available
-        if (financials.financials) {
-          const fin = financials.financials;
-          
-          // Net Debt to EBITDA
-          if (fin.debt && fin.ebitda) {
-            netDebtToEBITDA = fin.debt / fin.ebitda;
-          }
-          
-          // EV to EBIT
-          if (fin.enterprise_value && fin.ebit) {
-            evToEBIT = fin.enterprise_value / fin.ebit;
-          }
-          
-          // Return on Tangible Capital Employed
-          if (fin.net_income && fin.tangible_assets) {
-            rotce = fin.net_income / fin.tangible_assets;
-          }
-        }
-      }
-      
-      // Calculate score
-      const score = calculateScore({
-        marketCap,
-        netDebtToEBITDA,
-        evToEBIT,
-        rotce
-      });
       
       // Update stock in database
-      await Stock.findByIdAndUpdate(
-        stock._id,
-        {
-          price,
-          marketCap,
-          netDebtToEBITDA,
-          evToEBIT,
-          rotce,
-          score,
-          lastUpdated: new Date()
-        }
+      await Stock.findOneAndUpdate(
+        { symbol: stock.symbol },
+        stockData,
+        { new: true }
       );
+      
+      console.log(`Refreshed ${stock.symbol}`);
       
       // Add delay to avoid rate limiting
       await new Promise(resolve => setTimeout(resolve, 200));
