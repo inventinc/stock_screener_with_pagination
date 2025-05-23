@@ -1,6 +1,7 @@
 /**
  * Financial Modeling Prep API Import Module
  * Replaces Polygon.io with FMP for stock data import
+ * Modified for Heroku compatibility
  */
 const fs = require('fs');
 const path = require('path');
@@ -55,42 +56,44 @@ let successfulRequests = 0;
 let failedRequests = 0;
 let rateLimitedRequests = 0;
 
-// Ensure data directory exists
-const dataDir = path.join(__dirname, 'data');
-if (!fs.existsSync(dataDir)) {
-  try {
-    fs.mkdirSync(dataDir, { recursive: true });
-  } catch (error) {
-    console.error('Error creating data directory:', error);
-  }
-}
-
-// Import status file path
-const importStatusPath = path.join(dataDir, 'import_status.json');
+// Use /tmp directory for Heroku compatibility
+const dataDir = '/tmp';
 
 /**
- * Update import status
+ * Update import status - safe for Heroku
  * @param {Object} status - Status object to save
  */
 function updateImportStatus(status) {
   try {
-    fs.writeFileSync(importStatusPath, JSON.stringify(status, null, 2));
+    // On Heroku, just log the status instead of writing to file
+    console.log('Import Status Update:', JSON.stringify(status));
+    
+    // Try to write to tmp directory (which is writable on Heroku)
+    try {
+      const importStatusPath = path.join(dataDir, 'import_status.json');
+      fs.writeFileSync(importStatusPath, JSON.stringify(status, null, 2));
+    } catch (writeError) {
+      // Silently fail if writing fails - this is just status tracking
+      console.log('Note: Could not write status file (expected on Heroku)');
+    }
   } catch (error) {
     console.error('Error updating import status:', error);
   }
 }
 
 /**
- * Get current import status
+ * Get current import status - safe for Heroku
  * @returns {Object} Current import status
  */
 function getImportStatus() {
   try {
+    const importStatusPath = path.join(dataDir, 'import_status.json');
     if (fs.existsSync(importStatusPath)) {
       return JSON.parse(fs.readFileSync(importStatusPath, 'utf8'));
     }
   } catch (error) {
-    console.error('Error reading import status:', error);
+    // Silently fail if reading fails - this is just status tracking
+    console.log('Note: Could not read status file (expected on Heroku)');
   }
   
   return {
@@ -526,5 +529,6 @@ async function importAllStocksAdaptive() {
 module.exports = {
   importAllStocksAdaptive,
   getImportStatus,
-  makeApiRequest
+  makeApiRequest,
+  updateImportStatus
 };
