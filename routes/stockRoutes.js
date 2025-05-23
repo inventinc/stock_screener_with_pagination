@@ -10,7 +10,7 @@ const Stock = require('../db/models/Stock');
 router.get('/stocks', async (req, res) => {
   try {
     const page = parseInt(req.query.page) || 1;
-    const limit = parseInt(req.query.limit) || 100;
+    const limit = parseInt(req.query.pageSize || req.query.limit) || 100; // Accept both pageSize and limit
     const skip = (page - 1) * limit;
     
     // Build filter query based on request parameters
@@ -103,7 +103,7 @@ router.get('/stocks', async (req, res) => {
     
     // Return data with pagination info
     res.json({
-      stocks,
+      stocks: stocks, // Ensure stocks are in a 'stocks' property as expected by frontend
       pagination: {
         total,
         page,

@@ -24,16 +24,9 @@ connectDB()
   .catch(err => console.error('MongoDB connection error:', err));
 
 // API Routes
-// Get all stocks with optional filtering
-app.get('/api/stocks', async (req, res) => {
-  try {
-    const stocks = await Stock.find({});
-    res.json(stocks);
-  } catch (error) {
-    console.error('Error fetching stocks:', error);
-    res.status(500).json({ error: 'Failed to fetch stocks' });
-  }
-});
+// Import stock routes
+const stockRoutes = require('./routes/stockRoutes');
+app.use('/api', stockRoutes);
 
 // Get stats
 app.get('/api/stats', async (req, res) => {
