@@ -1,61 +1,75 @@
-# Heroku MongoDB Connection Fix
+# Stock Screener Application
 
-This package contains the necessary files to fix the MongoDB connection issue in your stock screener application on Heroku.
+This is a complete stock screener application with frontend and backend components that allows users to browse, filter, and analyze stock data.
 
-## Files Included
+## Features
 
-1. `.env.production` - Environment variables for production deployment
-2. `db/config.js` - Updated database configuration file
-3. `public/app.js` - Updated frontend API connection code
-4. `server.js` - Updated server file with proper MongoDB connection handling
+- Browse and search through NYSE and NASDAQ equities
+- Filter stocks by market cap, volume, debt, and valuation
+- View detailed metrics including P/E ratio and dividend yield
+- Export filtered results to CSV
+- Responsive design that works on all devices
 
-## Installation Instructions
+## Installation
 
-### 1. Update Heroku Config Variables
-
-First, set the required environment variables on Heroku:
-
+1. Install dependencies:
 ```
-heroku config:set NODE_ENV=production --app your-app-name
-heroku config:set MONGODB_URI=mongodb+srv://manus31:WdRG6pVbspSso8EH@cluster0.cclapno.mongodb.net/stockscreener_prod?retryWrites=true&w=majority --app your-app-name
+npm install
 ```
 
-### 2. Upload the Files
-
-Replace the following files in your application with the ones provided:
-
-- Copy `db/config.js` to your application's `db/` directory
-- Copy `server.js` to your application's root directory
-- Copy `public/app.js` to your application's `public/` directory
-
-### 3. Deploy to Heroku
-
-Commit and push the changes to Heroku:
-
+2. Configure MongoDB connection:
+Create a `.env` file in the root directory with the following content:
 ```
-git add .
-git commit -m "Fix MongoDB connection issues"
-git push heroku master
+MONGODB_URI=your_mongodb_connection_string
+PORT=3001
 ```
 
-### 4. Restart the Application
-
+3. Start the server:
 ```
-heroku restart --app your-app-name
+node optimized_server.js
 ```
 
-## Verification
+4. Access the application at http://localhost:3001
 
-After deploying, verify that:
+## Database Structure
 
-1. The application shows as connected to the database
-2. Stock data is being displayed correctly
-3. No connection errors appear in the Heroku logs
+The application uses MongoDB to store stock data. The main collection is `stocks` with the following schema:
 
-## Troubleshooting
+- `symbol`: Stock ticker symbol
+- `name`: Company name
+- `exchange`: Stock exchange (NYSE or NASDAQ)
+- `price`: Current stock price
+- `marketCap`: Market capitalization
+- `peRatio`: Price to Earnings ratio
+- `dividendYield`: Dividend yield as decimal
 
-If issues persist:
+## API Endpoints
 
-1. Check Heroku logs: `heroku logs --tail --app your-app-name`
-2. Verify MongoDB Atlas connection: Ensure your IP is whitelisted in MongoDB Atlas
-3. Check for any errors in the browser console
+- `GET /api/stocks`: Get paginated stocks with optional filtering
+- `GET /api/health`: Health check endpoint
+- `GET /api/stats`: Get statistics about the stock database
+- `GET /api/top-stocks`: Get top stocks by market cap
+
+## Frontend
+
+The frontend is built with vanilla JavaScript and includes:
+- Responsive card and table views
+- Filtering and search functionality
+- Export to CSV capability
+- Loading indicators and connection status
+
+## Maintenance
+
+To clean the database and remove non-equity securities:
+```
+node clean_stock_database.js
+```
+
+To validate the data quality:
+```
+node validate_cleaned_data.js
+```
+
+## Credits
+
+This application was developed by Manus AI.
