@@ -928,23 +928,31 @@
         // Update total stocks
         const totalStocksEl = document.getElementById('total-stocks');
         if (totalStocksEl) {
-            totalStocksEl.textContent = paginationInfo.totalStocks.toLocaleString();
+            if (stockDataManager.stats && stockDataManager.stats.total) {
+                totalStocksEl.textContent = stockDataManager.stats.total.toLocaleString();
+            } else {
+                totalStocksEl.textContent = paginationInfo.totalStocks.toLocaleString();
+            }
         }
         
         // Update NYSE stocks
         const nyseStocksEl = document.getElementById('nyse-stocks');
-        if (nyseStocksEl) {
+        if (nyseStocksEl && stockDataManager.stats && stockDataManager.stats.nyse !== undefined) {
+            nyseStocksEl.textContent = stockDataManager.stats.nyse.toLocaleString();
+        } else if (nyseStocksEl) {
             const nyseCount = stocks.filter(stock => 
-                (stock.exchange || stock.primary_exchange || '').toUpperCase() === 'NYSE'
+                (stock.exchange || '').toUpperCase().includes('NYSE')
             ).length;
             nyseStocksEl.textContent = nyseCount.toLocaleString();
         }
         
         // Update NASDAQ stocks
         const nasdaqStocksEl = document.getElementById('nasdaq-stocks');
-        if (nasdaqStocksEl) {
+        if (nasdaqStocksEl && stockDataManager.stats && stockDataManager.stats.nasdaq !== undefined) {
+            nasdaqStocksEl.textContent = stockDataManager.stats.nasdaq.toLocaleString();
+        } else if (nasdaqStocksEl) {
             const nasdaqCount = stocks.filter(stock => 
-                (stock.exchange || stock.primary_exchange || '').toUpperCase() === 'NASDAQ'
+                (stock.exchange || '').toUpperCase().includes('NASDAQ')
             ).length;
             nasdaqStocksEl.textContent = nasdaqCount.toLocaleString();
         }
@@ -1012,14 +1020,58 @@
     function buildFilterCriteria() {
         const filters = {
             search: searchInput ? searchInput.value : '',
-            marketCap: activeFilters.market_cap,
-            volume: activeFilters.volume,
-            debt: activeFilters.debt,
-            valuation: activeFilters.valuation,
+            exchange: activeFilters.exchange,
+            marketCapMin: getMarketCapMinValue(activeFilters.market_cap),
+            marketCapMax: getMarketCapMaxValue(activeFilters.market_cap),
+            debtMin: getDebtMinValue(activeFilters.debt),
+            debtMax: getDebtMaxValue(activeFilters.debt),
+            peMin: getPeMinValue(activeFilters.valuation),
+            peMax: getPeMaxValue(activeFilters.valuation),
             preset: activeFilters.preset
         };
         
         return filters;
+    }
+    
+    // Helper functions to convert filter values to numeric ranges
+    function getMarketCapMinValue(marketCapFilters) {
+        if (!marketCapFilters || marketCapFilters.length === 0) return undefined;
+        if (marketCapFilters.includes('large')) return 10000000000; // $10B+
+        if (marketCapFilters.includes('mid')) return 2000000000;    // $2B+
+        if (marketCapFilters.includes('small')) return 300000000;   // $300M+
+        return undefined;
+    }
+    
+    function getMarketCapMaxValue(marketCapFilters) {
+        if (!marketCapFilters || marketCapFilters.length === 0) return undefined;
+        if (marketCapFilters.includes('small')) return 2000000000;  // Up to $2B
+        if (marketCapFilters.includes('mid')) return 10000000000;   // Up to $10B
+        return undefined;
+    }
+    
+    function getDebtMinValue(debtFilters) {
+        if (!debtFilters || debtFilters.length === 0) return undefined;
+        return undefined; // No minimum for debt filters
+    }
+    
+    function getDebtMaxValue(debtFilters) {
+        if (!debtFilters || debtFilters.length === 0) return undefined;
+        if (debtFilters.includes('low')) return 1;
+        if (debtFilters.includes('moderate')) return 2;
+        if (debtFilters.includes('high')) return 3;
+        return undefined;
+    }
+    
+    function getPeMinValue(valuationFilters) {
+        if (!valuationFilters || valuationFilters.length === 0) return undefined;
+        return 0; // All valid P/E ratios are > 0
+    }
+    
+    function getPeMaxValue(valuationFilters) {
+        if (!valuationFilters || valuationFilters.length === 0) return undefined;
+        if (valuationFilters.includes('cheap')) return 15;
+        if (valuationFilters.includes('fair')) return 25;
+        return undefined;
     }
     
     // Render cards
@@ -1043,26 +1095,26 @@
             
             card.innerHTML = `
                 <div class="stock-header">
-                    <div class="stock-symbol">${stock.symbol || stock.ticker || 'N/A'}</div>
-                    <div class="stock-exchange">${stock.exchange || stock.primary_exchange || 'N/A'}</div>
+                    <div class="stock-symbol">${stock.symbol || 'N/A'}</div>
+                    <div class="stock-exchange">${stock.exchange || 'N/A'}</div>
                 </div>
                 <div class="stock-name">${stock.name || 'N/A'}</div>
                 <div class="stock-metrics">
                     <div class="metric">
                         <div class="metric-label">Price</div>
-                        <div class="metric-value">$${(stock.price || stock.last_trade?.p || 0).toFixed(2)}</div>
+                        <div class="metric-value">$${(stock.price || 0).toFixed(2)}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">Market Cap</div>
-                        <div class="metric-value">${formatMarketCap(stock.marketCap || stock.market_cap)}</div>
+                        <div class="metric-value">${formatMarketCap(stock.marketCap)}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">P/E Ratio</div>
-                        <div class="metric-value">${stock.peRatio || stock.pe_ratio ? (stock.peRatio || stock.pe_ratio).toFixed(2) : 'N/A'}</div>
+                        <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">Dividend Yield</div>
-                        <div class="metric-value">${stock.dividendYield || stock.dividend_yield ? ((stock.dividendYield || stock.dividend_yield) * 100).toFixed(2) + '%' : 'N/A'}</div>
+                        <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
                     </div>
                 </div>
             `;
@@ -1098,14 +1150,14 @@
             const row = document.createElement('tr');
             
             row.innerHTML = `
-                <td>${stock.symbol || stock.ticker || 'N/A'}</td>
+                <td>${stock.symbol || 'N/A'}</td>
                 <td>${stock.name || 'N/A'}</td>
-                <td>${stock.exchange || stock.primary_exchange || 'N/A'}</td>
-                <td>$${(stock.price || stock.last_trade?.p || 0).toFixed(2)}</td>
-                <td>${formatMarketCap(stock.marketCap || stock.market_cap)}</td>
-                <td>${stock.peRatio || stock.pe_ratio ? (stock.peRatio || stock.pe_ratio).toFixed(2) : 'N/A'}</td>
-                <td>${stock.dividendYield || stock.dividend_yield ? ((stock.dividendYield || stock.dividend_yield) * 100).toFixed(2) + '%' : 'N/A'}</td>
-                <td><span class="score ${getScoreClass(stock.score || stock.custom_score || 0)}">${stock.score || stock.custom_score || 'N/A'}</span></td>
+                <td>${stock.exchange || 'N/A'}</td>
+                <td>$${(stock.price || 0).toFixed(2)}</td>
+                <td>${formatMarketCap(stock.marketCap)}</td>
+                <td>${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</td>
+                <td>${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</td>
+                <td><span class="score ${getScoreClass(stock.score || 0)}">${stock.score || 'N/A'}</span></td>
             `;
             
             tableBody.appendChild(row);
@@ -1195,6 +1247,7 @@
         volume: [],
         debt: [],
         valuation: [],
+        exchange: [],
         preset: null
     };
 

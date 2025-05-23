@@ -164,9 +164,14 @@ class EnhancedDataManager {
             
             // Update state
             this.stocks = data.stocks || [];
-            this.totalStocks = data.total || 0;
-            this.currentPage = data.page || page;
-            this.totalPages = data.totalPages || Math.ceil(this.totalStocks / this.pageSize);
+            this.totalStocks = data.pagination?.total || 0;
+            this.currentPage = data.pagination?.page || page;
+            this.totalPages = data.pagination?.pages || Math.ceil(this.totalStocks / this.pageSize);
+            
+            // Store stats for display
+            if (data.stats) {
+                this.stats = data.stats;
+            }
             this.lastUpdated = new Date();
             
             console.log(`Page ${page} loaded: ${this.stocks.length} stocks of ${this.totalStocks} total (${this.totalPages} pages)`);
