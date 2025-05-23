@@ -1,90 +1,72 @@
 /**
  * Filter Connector for Stock Screener
  * 
- * This script connects the filter UI elements to the EnhancedDataManager
+ * This script connects the filter UI elements to the API endpoints
  * to enable filtering functionality.
  */
 (function() {
     console.log('Filter Connector: Initializing');
     
-    // Wait for DOM and scripts to be fully loaded
-    window.addEventListener('load', function() {
-        console.log('Filter Connector: Window loaded, waiting for scripts...');
-        
-        // Give time for other scripts to initialize
-        setTimeout(function() {
-            initializeFilterConnector();
-        }, 1000);
+    // Track active filters
+    const activeFilters = {};
+    
+    // Wait for DOM to be fully loaded
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('Filter Connector: DOM loaded, setting up filter handlers');
+        setupFilterHandlers();
     });
     
-    // Also try to initialize immediately if scripts are already loaded
-    if (document.readyState === 'complete') {
-        console.log('Filter Connector: Document already loaded, initializing now');
-        initializeFilterConnector();
+    // If DOM is already loaded, set up handlers immediately
+    if (document.readyState === 'interactive' || document.readyState === 'complete') {
+        console.log('Filter Connector: DOM already loaded, setting up filter handlers now');
+        setupFilterHandlers();
     }
     
     /**
-     * Initialize the filter connector
+     * Set up handlers for all filter buttons
      */
-    function initializeFilterConnector() {
-        console.log('Filter Connector: Setting up filter event handlers');
+    function setupFilterHandlers() {
+        // Set up market cap filter buttons
+        setupFilterGroup('market_cap');
         
-        // Check if stockDataManager exists
-        if (!window.stockDataManager) {
-            console.error('Filter Connector: stockDataManager not found, cannot connect filters');
-            return;
-        }
+        // Set up volume filter buttons
+        setupFilterGroup('volume');
         
-        // Set up filter button event handlers
-        setupFilterButtons();
+        // Set up debt filter buttons
+        setupFilterGroup('debt');
         
-        // Set up search input event handler
-        setupSearchInput();
+        // Set up valuation filter buttons
+        setupFilterGroup('valuation');
         
-        console.log('Filter Connector: Setup complete');
-    }
-    
-    /**
-     * Set up filter button event handlers
-     */
-    function setupFilterButtons() {
-        // Market cap filter buttons
-        setupFilterGroup('market-cap', 'marketCap');
-        
-        // Volume filter buttons
-        setupFilterGroup('volume', 'volume');
-        
-        // Debt filter buttons
-        setupFilterGroup('debt', 'debt');
-        
-        // Valuation filter buttons
-        setupFilterGroup('valuation', 'valuation');
-        
-        // Preset buttons
-        document.querySelectorAll('.preset-button').forEach(button => {
+        // Set up preset buttons
+        document.querySelectorAll('button[data-preset]').forEach(button => {
             button.addEventListener('click', function() {
                 handlePresetClick(this);
             });
         });
         
-        // Reset button
-        const resetButton = document.querySelector('button[data-action="reset-filters"]');
+        // Set up reset button
+        const resetButton = document.querySelector('button:contains("Reset Filters")');
         if (resetButton) {
             resetButton.addEventListener('click', function() {
                 resetAllFilters();
             });
         }
+        
+        // Set up search input
+        setupSearchInput();
+        
+        console.log('Filter Connector: All filter handlers set up');
     }
     
     /**
      * Set up a group of related filter buttons
-     * @param {String} groupName - Name of the filter group
-     * @param {String} filterKey - Key to use in filter object
+     * @param {String} filterType - Type of filter (market_cap, volume, etc.)
      */
-    function setupFilterGroup(groupName, filterKey) {
-        document.querySelectorAll(`.filter-button[data-filter="${groupName}"]`).forEach(button => {
+    function setupFilterGroup(filterType) {
+        document.querySelectorAll(`button[data-filter="${filterType}"]`).forEach(button => {
             button.addEventListener('click', function() {
-                handleFilterClick(this, filterKey);
+                handleFilterClick(this, filterType);
             });
         });
     }
@@ -92,9 +74,9 @@
     /**
      * Handle filter button click
      * @param {HTMLElement} button - The clicked button
-     * @param {String} filterKey - Key to use in filter object
+     * @param {String} filterType - Type of filter
      */
-    function handleFilterClick(button, filterKey) {
+    function handleFilterClick(button, filterType) {
         // Toggle active state
         button.classList.toggle('active');
         const isActive = button.classList.contains('active');
@@ -102,33 +84,33 @@
         // Get filter value
         const value = button.dataset.value;
         
-        // Get current filters
-        const filters = window.stockDataManager.activeFilters || {};
-        
-        // Initialize filter array if needed
-        if (!filters[filterKey]) {
-            filters[filterKey] = [];
+        // Update active filters
+        if (!activeFilters[filterType]) {
+            activeFilters[filterType] = [];
         }
         
         if (isActive) {
             // Add filter value if not already present
-            if (!filters[filterKey].includes(value)) {
-                filters[filterKey].push(value);
+            if (!activeFilters[filterType].includes(value)) {
+                activeFilters[filterType].push(value);
             }
         } else {
             // Remove filter value
-            filters[filterKey] = filters[filterKey].filter(v => v !== value);
+            const index = activeFilters[filterType].indexOf(value);
+            if (index !== -1) {
+                activeFilters[filterType].splice(index, 1);
+            }
             
             // Remove empty filter
-            if (filters[filterKey].length === 0) {
-                delete filters[filterKey];
+            if (activeFilters[filterType].length === 0) {
+                delete activeFilters[filterType];
             }
         }
         
-        console.log(`Filter Connector: Applied ${filterKey} filter:`, filters[filterKey]);
+        console.log(`Filter Connector: Applied ${filterType} filter:`, activeFilters[filterType]);
         
-        // Reload data with updated filters
-        window.stockDataManager.loadPage(1, filters);
+        // Apply filters
+        applyFilters();
     }
     
     /**
@@ -143,28 +125,26 @@
         // Get preset value
         const preset = button.dataset.preset;
         
-        // Get current filters
-        const filters = window.stockDataManager.activeFilters || {};
-        
+        // Update active filters
         if (isActive) {
             // Add preset
-            filters.preset = preset;
+            activeFilters.preset = preset;
             
             // Deactivate other presets
-            document.querySelectorAll('.preset-button').forEach(btn => {
+            document.querySelectorAll('button[data-preset]').forEach(btn => {
                 if (btn !== button) {
                     btn.classList.remove('active');
                 }
             });
         } else {
             // Remove preset
-            delete filters.preset;
+            delete activeFilters.preset;
         }
         
         console.log(`Filter Connector: Applied preset filter:`, preset);
         
-        // Reload data with updated filters
-        window.stockDataManager.loadPage(1, filters);
+        // Apply filters
+        applyFilters();
     }
     
     /**
@@ -172,7 +152,7 @@
      */
     function resetAllFilters() {
         // Clear all active states
-        document.querySelectorAll('.filter-button, .preset-button').forEach(button => {
+        document.querySelectorAll('.filter-button, button[data-filter], button[data-preset]').forEach(button => {
             button.classList.remove('active');
         });
         
@@ -182,10 +162,15 @@
             searchInput.value = '';
         }
         
+        // Clear active filters
+        Object.keys(activeFilters).forEach(key => {
+            delete activeFilters[key];
+        });
+        
         console.log('Filter Connector: Reset all filters');
         
-        // Reload data with empty filters
-        window.stockDataManager.loadPage(1, {});
+        // Apply filters (empty)
+        applyFilters();
     }
     
     /**
@@ -204,21 +189,54 @@
             debounceTimeout = setTimeout(() => {
                 const searchValue = searchInput.value.trim();
                 
-                // Get current filters
-                const filters = window.stockDataManager.activeFilters || {};
-                
                 // Update search filter
                 if (searchValue) {
-                    filters.search = searchValue;
+                    activeFilters.search = searchValue;
                 } else {
-                    delete filters.search;
+                    delete activeFilters.search;
                 }
                 
                 console.log(`Filter Connector: Applied search filter:`, searchValue);
                 
-                // Reload data with updated filters
-                window.stockDataManager.loadPage(1, filters);
-            }, 300);
+                // Apply filters
+                applyFilters();
+            }, 500);
         });
+    }
+    
+    /**
+     * Apply all active filters
+     */
+    function applyFilters() {
+        // Build query parameters
+        const params = new URLSearchParams(window.location.search);
+        
+        // Clear existing filter parameters
+        ['market_cap', 'volume', 'debt', 'valuation', 'preset', 'search'].forEach(param => {
+            params.delete(param);
+        });
+        
+        // Add current filter parameters
+        Object.entries(activeFilters).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+                value.forEach(v => params.append(key, v));
+            } else if (value) {
+                params.append(key, value);
+            }
+        });
+        
+        // Reset to page 1 when filters change
+        params.set('page', '1');
+        
+        // Build URL
+        const newUrl = window.location.pathname + '?' + params.toString();
+        
+        // Navigate to new URL
+        if (newUrl !== window.location.pathname + window.location.search) {
+            console.log('Filter Connector: Navigating to', newUrl);
+            window.location.href = newUrl;
+        } else {
+            console.log('Filter Connector: URL unchanged, not navigating');
+        }
     }
 })();
