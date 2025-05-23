@@ -1,6 +1,6 @@
 /**
  * PaginatedStockApp - Stock screener application with pagination and adaptive card view
- * 
+ *
  * Features:
  * - Classic pagination with modern UX
  * - Adaptive card heights for mobile
@@ -9,7 +9,7 @@
  */
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
-    const stockCardsContainer = document.getElementById('stock-cards');
+    const stockCardsContainer = document.getElementById('stock-cards-container');
     const stockTableContainer = document.getElementById('stock-table-container');
     const paginationContainer = document.getElementById('pagination-container');
     const totalStocksElement = document.getElementById('total-stocks');
@@ -172,8 +172,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 
                 // Update API status
                 updateApiStatus(true);
-                
                 setLoading(false);
+                
                 return processedStocks;
             })
             .catch(error => {
@@ -195,15 +195,12 @@ document.addEventListener('DOMContentLoaded', function() {
             if (stock.price) {
                 stock.formattedPrice = formatCurrency(stock.price);
             }
-            
             if (stock.marketCap) {
                 stock.formattedMarketCap = formatLargeNumber(stock.marketCap);
             }
-            
             if (stock.avgDollarVolume) {
                 stock.formattedVolume = formatLargeNumber(stock.avgDollarVolume);
             }
-            
             return stock;
         });
     }
@@ -221,315 +218,147 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Render card view
-     * @param {Array} stocks - Stocks to render
+     * Toggle filter
+     * @param {HTMLElement} button - Filter button element
      */
-    function renderCardView(stocks) {
-        // Clear container
-        stockCardsContainer.innerHTML = '';
+    function toggleFilter(button) {
+        // Get filter data
+        const filter = button.dataset.filter;
+        const value = button.dataset.value;
         
-        // Show loading skeleton if loading
-        if (isLoading) {
-            renderCardSkeletons();
-            return;
+        // Toggle active state
+        button.classList.toggle('active');
+        const isActive = button.classList.contains('active');
+        
+        // Update active filters
+        if (!activeFilters[filter]) {
+            activeFilters[filter] = [];
         }
         
-        // Show empty state if no stocks
-        if (!stocks || stocks.length === 0) {
-            stockCardsContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📊</div>
-                    <div class="empty-title">No stocks found</div>
-                    <div class="empty-message">Try adjusting your filters or search criteria</div>
-                </div>
-            `;
-            return;
-        }
-        
-        // Render each stock card
-        stocks.forEach(stock => {
-            const cardElement = document.createElement('div');
-            renderStockCard(stock, cardElement);
-            stockCardsContainer.appendChild(cardElement);
-        });
-    }
-    
-    /**
-     * Render table view
-     * @param {Array} stocks - Stocks to render
-     */
-    function renderTableView(stocks) {
-        // Clear container
-        stockTableContainer.innerHTML = '';
-        
-        // Show loading skeleton if loading
-        if (isLoading) {
-            renderTableSkeleton();
-            return;
-        }
-        
-        // Show empty state if no stocks
-        if (!stocks || stocks.length === 0) {
-            stockTableContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📊</div>
-                    <div class="empty-title">No stocks found</div>
-                    <div class="empty-message">Try adjusting your filters or search criteria</div>
-                </div>
-            `;
-            return;
-        }
-        
-        // Create table
-        const table = document.createElement('table');
-        table.className = 'stock-table';
-        
-        // Create table header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        
-        // Define columns
-        const columns = [
-            { field: 'symbol', label: 'Symbol' },
-            { field: 'name', label: 'Name' },
-            { field: 'exchange', label: 'Exchange' },
-            { field: 'price', label: 'Price' },
-            { field: 'marketCap', label: 'Market Cap' },
-            { field: 'peRatio', label: 'P/E Ratio' },
-            { field: 'dividendYield', label: 'Div Yield' },
-            { field: 'netDebtToEBITDA', label: 'Debt/EBITDA' },
-            { field: 'score', label: 'Score' }
-        ];
-        
-        // Create header cells
-        columns.forEach(column => {
-            const th = document.createElement('th');
-            th.textContent = column.label;
-            headerRow.appendChild(th);
-        });
-        
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-        
-        // Create table body
-        const tbody = document.createElement('tbody');
-        
-        // Create rows
-        stocks.forEach(stock => {
-            const row = document.createElement('tr');
+        if (isActive) {
+            // Add filter
+            if (!activeFilters[filter].includes(value)) {
+                activeFilters[filter].push(value);
+            }
+        } else {
+            // Remove filter
+            activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
             
-            // Add cells
-            columns.forEach(column => {
-                const cell = document.createElement('td');
-                
-                // Get value
-                let value = stock[column.field];
-                
-                // Format value
-                if (column.field === 'symbol') {
-                    cell.innerHTML = `<span class="stock-symbol-cell">${value}</span>`;
-                } else if (column.field === 'price') {
-                    cell.textContent = stock.formattedPrice || formatCurrency(value) || 'N/A';
-                } else if (column.field === 'marketCap') {
-                    cell.textContent = stock.formattedMarketCap || formatLargeNumber(value) || 'N/A';
-                } else if (column.field === 'peRatio') {
-                    cell.textContent = value ? value.toFixed(2) : 'N/A';
-                } else if (column.field === 'dividendYield') {
-                    cell.textContent = value ? (value * 100).toFixed(2) + '%' : 'N/A';
-                } else if (column.field === 'netDebtToEBITDA') {
-                    cell.textContent = value ? value.toFixed(2) + 'x' : 'N/A';
-                } else if (column.field === 'score') {
-                    cell.innerHTML = renderScore(value);
-                } else {
-                    cell.textContent = value || 'N/A';
+            // Remove empty filter
+            if (activeFilters[filter].length === 0) {
+                delete activeFilters[filter];
+            }
+        }
+        
+        // Special case for reset button
+        if (button.dataset.action === 'reset-filters') {
+            // Clear all filters
+            document.querySelectorAll('.filter-button, .preset-button').forEach(btn => {
+                if (btn !== button) {
+                    btn.classList.remove('active');
                 }
-                
-                row.appendChild(cell);
             });
             
-            tbody.appendChild(row);
-        });
+            // Reset active filters
+            activeFilters = {};
+        }
         
-        table.appendChild(tbody);
-        stockTableContainer.appendChild(table);
+        // Reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
-     * Render stock card
-     * @param {Object} stock - Stock data
-     * @param {HTMLElement} container - Container element
+     * Toggle preset
+     * @param {HTMLElement} button - Preset button element
      */
-    function renderStockCard(stock, container) {
-        // Clear container
-        container.innerHTML = '';
-        container.className = 'stock-card';
+    function togglePreset(button) {
+        // Get preset data
+        const preset = button.dataset.preset;
         
-        // Check if stock has incomplete data
-        const hasIncompleteData = !stock.price || !stock.marketCap || !stock.peRatio;
-        if (hasIncompleteData) {
-            container.classList.add('incomplete-data');
-        }
+        // Toggle active state
+        button.classList.toggle('active');
+        const isActive = button.classList.contains('active');
         
-        // Create card content with adaptive height
-        const content = `
-            <div class="stock-header">
-                <div class="stock-symbol">${stock.symbol}</div>
-                <div class="stock-exchange">${stock.exchange || 'N/A'}</div>
-            </div>
-            <div class="stock-name">${stock.name || 'Unknown'}</div>
-            <div class="stock-metrics">
-                <div class="metric">
-                    <div class="metric-label">Price</div>
-                    <div class="metric-value">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Market Cap</div>
-                    <div class="metric-value">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">P/E Ratio</div>
-                    <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Dividend Yield</div>
-                    <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Debt/EBITDA</div>
-                    <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Score</div>
-                    <div class="metric-value">
-                        ${renderScore(stock.score)}
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = content;
-    }
-    
-    /**
-     * Render card skeletons for loading state
-     */
-    function renderCardSkeletons() {
-        const pageSize = pagination.pageSize;
-        
-        for (let i = 0; i < Math.min(pageSize, 12); i++) {
-            const skeleton = document.createElement('div');
-            skeleton.className = 'stock-card skeleton';
-            skeleton.innerHTML = `
-                <div class="skeleton-header">
-                    <div class="skeleton-symbol"></div>
-                    <div class="skeleton-exchange"></div>
-                </div>
-                <div class="skeleton-name"></div>
-                <div class="skeleton-metrics">
-                    <div class="skeleton-metric"></div>
-                    <div class="skeleton-metric"></div>
-                    <div class="skeleton-metric"></div>
-                    <div class="skeleton-metric"></div>
-                    <div class="skeleton-metric"></div>
-                    <div class="skeleton-metric"></div>
-                </div>
-            `;
-            stockCardsContainer.appendChild(skeleton);
-        }
-    }
-    
-    /**
-     * Render table skeleton for loading state
-     */
-    function renderTableSkeleton() {
-        const pageSize = pagination.pageSize;
-        
-        const table = document.createElement('table');
-        table.className = 'stock-table skeleton-table';
-        
-        // Create table header
-        const thead = document.createElement('thead');
-        const headerRow = document.createElement('tr');
-        
-        // Create header cells
-        for (let i = 0; i < 9; i++) {
-            const th = document.createElement('th');
-            th.innerHTML = '<div class="skeleton-header"></div>';
-            headerRow.appendChild(th);
-        }
-        
-        thead.appendChild(headerRow);
-        table.appendChild(thead);
-        
-        // Create table body
-        const tbody = document.createElement('tbody');
-        
-        // Create rows
-        for (let i = 0; i < Math.min(pageSize, 20); i++) {
-            const row = document.createElement('tr');
+        // Update active filters
+        if (isActive) {
+            // Add preset
+            activeFilters.preset = preset;
             
-            // Add cells
-            for (let j = 0; j < 9; j++) {
-                const cell = document.createElement('td');
-                cell.innerHTML = '<div class="skeleton-cell"></div>';
-                row.appendChild(cell);
-            }
-            
-            tbody.appendChild(row);
+            // Deactivate other presets
+            document.querySelectorAll('.preset-button').forEach(btn => {
+                if (btn !== button) {
+                    btn.classList.remove('active');
+                }
+            });
+        } else {
+            // Remove preset
+            delete activeFilters.preset;
         }
         
-        table.appendChild(tbody);
-        stockTableContainer.appendChild(table);
+        // Reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
-     * Render score
-     * @param {Number} score - Score value
-     * @returns {String} HTML for score
+     * Handle search input
      */
-    function renderScore(score) {
-        if (!score && score !== 0) return 'N/A';
+    function handleSearch() {
+        const searchValue = searchInput.value.trim();
         
-        let scoreClass = '';
-        if (score >= 80) scoreClass = 'excellent';
-        else if (score >= 60) scoreClass = 'good';
-        else if (score >= 40) scoreClass = 'average';
-        else if (score >= 20) scoreClass = 'below-average';
-        else scoreClass = 'poor';
+        // Update active filters
+        if (searchValue) {
+            activeFilters.search = searchValue;
+        } else {
+            delete activeFilters.search;
+        }
         
-        return `<span class="score ${scoreClass}">${score}</span>`;
+        // Reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
      * Handle page change
      * @param {Number} page - New page number
-     * @param {Number} pageSize - Items per page
      */
-    function handlePageChange(page, pageSize) {
-        loadStocksPage(page, pageSize);
+    function handlePageChange(page) {
+        loadStocksPage(page, pagination.pageSize);
     }
     
     /**
-     * Update stats
-     * @param {Object} stats - Stats data
+     * Toggle filters visibility
      */
-    function updateStats(stats) {
-        if (!stats) return;
+    function toggleFilters() {
+        filtersContent.classList.toggle('collapsed');
+        filtersToggle.querySelector('.filters-toggle').classList.toggle('collapsed');
+    }
+    
+    /**
+     * Switch view between card and table
+     * @param {String} view - View type ('card' or 'table')
+     */
+    function switchView(view) {
+        // Update state
+        currentView = view;
         
-        // Update stats in UI
-        totalStocksElement.textContent = formatNumber(stats.total || 0);
-        nyseStocksElement.textContent = formatNumber(stats.nyse || 0);
-        nasdaqStocksElement.textContent = formatNumber(stats.nasdaq || 0);
-        
-        // Update last updated
-        if (stats.lastUpdated) {
-            const date = new Date(stats.lastUpdated);
-            lastUpdatedElement.textContent = date.toLocaleString();
+        // Update UI
+        if (view === 'card') {
+            cardViewButton.classList.add('active');
+            tableViewButton.classList.remove('active');
+            stockCardsContainer.style.display = 'grid';
+            stockTableContainer.style.display = 'none';
+        } else {
+            cardViewButton.classList.remove('active');
+            tableViewButton.classList.add('active');
+            stockCardsContainer.style.display = 'none';
+            stockTableContainer.style.display = 'block';
         }
+        
+        // Render stocks
+        renderStocks(currentStocks);
     }
     
     /**
-     * Update API status
+     * Update API status indicator
      * @param {Boolean} connected - Whether API is connected
      */
     function updateApiStatus(connected) {
@@ -545,194 +374,104 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
+     * Update stats display
+     * @param {Object} stats - Stats data
+     */
+    function updateStats(stats) {
+        if (totalStocksElement) {
+            totalStocksElement.textContent = stats.total || 0;
+        }
+        if (nyseStocksElement) {
+            nyseStocksElement.textContent = stats.nyse || 0;
+        }
+        if (nasdaqStocksElement) {
+            nasdaqStocksElement.textContent = stats.nasdaq || 0;
+        }
+        if (lastUpdatedElement) {
+            lastUpdatedElement.textContent = formatDate(stats.lastUpdated || new Date());
+        }
+    }
+    
+    /**
      * Set loading state
-     * @param {Boolean} loading - Whether data is loading
+     * @param {Boolean} loading - Whether app is loading
      */
     function setLoading(loading) {
         isLoading = loading;
         
-        // Update loading indicator
-        document.body.classList.toggle('loading', loading);
+        // Update UI
+        const loadingBar = document.getElementById('loading-progress-bar');
+        const progressInner = document.getElementById('progress-inner');
+        const loadingText = document.getElementById('loading-progress-text');
         
-        // Render appropriate view
         if (loading) {
-            renderStocks([]);
-        }
-    }
-    
-    /**
-     * Toggle filters
-     */
-    function toggleFilters() {
-        filtersContent.classList.toggle('collapsed');
-        filtersToggle.classList.toggle('collapsed');
-    }
-    
-    /**
-     * Switch view
-     * @param {String} view - View to switch to ('card' or 'table')
-     */
-    function switchView(view) {
-        if (currentView === view) return;
-        
-        currentView = view;
-        
-        // Update active button
-        cardViewButton.classList.toggle('active', view === 'card');
-        tableViewButton.classList.toggle('active', view === 'table');
-        
-        // Show/hide containers
-        stockCardsContainer.style.display = view === 'card' ? 'grid' : 'none';
-        stockTableContainer.style.display = view === 'table' ? 'block' : 'none';
-        
-        // Render current stocks in new view
-        renderStocks(currentStocks);
-    }
-    
-    /**
-     * Handle search
-     */
-    function handleSearch() {
-        const searchValue = searchInput.value.trim();
-        
-        // Update active filters
-        if (searchValue) {
-            activeFilters.search = searchValue;
-        } else {
-            delete activeFilters.search;
-        }
-        
-        // Reset to first page and apply filters
-        pagination.goToPage(1);
-    }
-    
-    /**
-     * Toggle filter
-     * @param {HTMLElement} button - Filter button
-     */
-    function toggleFilter(button) {
-        const filter = button.dataset.filter;
-        const value = button.dataset.value;
-        
-        // Toggle active state
-        button.classList.toggle('active');
-        
-        // Update active filters
-        if (!activeFilters[filter]) {
-            activeFilters[filter] = [];
-        }
-        
-        if (button.classList.contains('active')) {
-            // Add filter
-            if (!activeFilters[filter].includes(value)) {
-                activeFilters[filter].push(value);
+            if (loadingBar) loadingBar.style.display = 'block';
+            if (progressInner) progressInner.style.width = '70%';
+            if (loadingText) {
+                loadingText.style.display = 'block';
+                loadingText.textContent = 'Loading stocks...';
             }
         } else {
-            // Remove filter
-            activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
-            
-            // Remove empty filter
-            if (activeFilters[filter].length === 0) {
-                delete activeFilters[filter];
+            if (progressInner) {
+                progressInner.style.width = '100%';
+                setTimeout(() => {
+                    if (loadingBar) loadingBar.style.display = 'none';
+                    if (progressInner) progressInner.style.width = '0%';
+                }, 300);
+            }
+            if (loadingText) {
+                loadingText.style.display = 'none';
             }
         }
-        
-        // Reset to first page and apply filters
-        pagination.goToPage(1);
-        
-        // Explicitly reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
-     * Toggle preset
-     * @param {HTMLElement} button - Preset button
-     */
-    function togglePreset(button) {
-        const preset = button.dataset.preset;
-        
-        // Toggle active state
-        button.classList.toggle('active');
-        
-        // Update active filters
-        if (!activeFilters.preset) {
-            activeFilters.preset = [];
-        }
-        
-        if (button.classList.contains('active')) {
-            // Add preset
-            if (!activeFilters.preset.includes(preset)) {
-                activeFilters.preset.push(preset);
-            }
-        } else {
-            // Remove preset
-            activeFilters.preset = activeFilters.preset.filter(p => p !== preset);
-            
-            // Remove empty preset
-            if (activeFilters.preset.length === 0) {
-                delete activeFilters.preset;
-            }
-        }
-        
-        // Reset to first page and apply filters
-        pagination.goToPage(1);
-        
-        // Explicitly reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
-    }
-    
-    /**
-     * Handle resize
+     * Handle window resize
      */
     function handleResize() {
-        // Refresh current view
-        renderStocks(currentStocks);
+        // Adjust UI for current window size
+        // (Add responsive adjustments if needed)
     }
     
     /**
-     * Format currency
+     * Format currency value
      * @param {Number} value - Value to format
-     * @returns {String} Formatted currency
+     * @returns {String} Formatted currency string
      */
     function formatCurrency(value) {
-        if (value === null || value === undefined) return null;
-        
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        }).format(value);
+        return '$' + value.toFixed(2);
     }
     
     /**
-     * Format large number
+     * Format large number with suffix
      * @param {Number} value - Value to format
-     * @returns {String} Formatted number
+     * @returns {String} Formatted number string
      */
     function formatLargeNumber(value) {
-        if (value === null || value === undefined) return null;
-        
-        if (value >= 1e12) {
-            return '$' + (value / 1e12).toFixed(2) + 'T';
-        } else if (value >= 1e9) {
-            return '$' + (value / 1e9).toFixed(2) + 'B';
-        } else if (value >= 1e6) {
-            return '$' + (value / 1e6).toFixed(2) + 'M';
-        } else if (value >= 1e3) {
-            return '$' + (value / 1e3).toFixed(2) + 'K';
+        if (value >= 1000000000000) {
+            return '$' + (value / 1000000000000).toFixed(2) + 'T';
+        } else if (value >= 1000000000) {
+            return '$' + (value / 1000000000).toFixed(2) + 'B';
+        } else if (value >= 1000000) {
+            return '$' + (value / 1000000).toFixed(2) + 'M';
+        } else if (value >= 1000) {
+            return '$' + (value / 1000).toFixed(2) + 'K';
         } else {
             return '$' + value.toFixed(2);
         }
     }
     
     /**
-     * Format number
-     * @param {Number} value - Value to format
-     * @returns {String} Formatted number
+     * Format date
+     * @param {Date|String} date - Date to format
+     * @returns {String} Formatted date string
      */
-    function formatNumber(value) {
-        return new Intl.NumberFormat('en-US').format(value);
+    function formatDate(date) {
+        if (!(date instanceof Date)) {
+            date = new Date(date);
+        }
+        
+        return date.toLocaleDateString() + ', ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
     }
     
     /**
@@ -743,9 +482,68 @@ document.addEventListener('DOMContentLoaded', function() {
      */
     function debounce(func, wait) {
         let timeout;
-        return function(...args) {
+        return function() {
+            const context = this;
+            const args = arguments;
             clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
+            timeout = setTimeout(() => {
+                func.apply(context, args);
+            }, wait);
         };
+    }
+    
+    /**
+     * Tooltip class for showing tooltips
+     */
+    function Tooltip() {
+        const tooltipElement = document.getElementById('tooltip');
+        
+        // Initialize tooltip
+        if (!tooltipElement) return;
+        
+        // Add event listeners
+        document.querySelectorAll('[title]').forEach(element => {
+            element.addEventListener('mouseenter', showTooltip);
+            element.addEventListener('mouseleave', hideTooltip);
+        });
+        
+        /**
+         * Show tooltip
+         * @param {Event} event - Mouse event
+         */
+        function showTooltip(event) {
+            const title = event.target.getAttribute('title');
+            if (!title) return;
+            
+            // Store original title and remove to prevent native tooltip
+            event.target.dataset.originalTitle = title;
+            event.target.removeAttribute('title');
+            
+            // Set tooltip content
+            tooltipElement.textContent = title;
+            
+            // Position tooltip
+            const rect = event.target.getBoundingClientRect();
+            tooltipElement.style.top = (rect.top - tooltipElement.offsetHeight - 10) + 'px';
+            tooltipElement.style.left = (rect.left + (rect.width / 2) - (tooltipElement.offsetWidth / 2)) + 'px';
+            
+            // Show tooltip
+            tooltipElement.style.display = 'block';
+        }
+        
+        /**
+         * Hide tooltip
+         * @param {Event} event - Mouse event
+         */
+        function hideTooltip(event) {
+            // Restore original title
+            if (event.target.dataset.originalTitle) {
+                event.target.setAttribute('title', event.target.dataset.originalTitle);
+                delete event.target.dataset.originalTitle;
+            }
+            
+            // Hide tooltip
+            tooltipElement.style.display = 'none';
+        }
     }
 });
