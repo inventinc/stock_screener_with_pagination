@@ -1,81 +1,84 @@
 /**
- * Tooltip - Simple tooltip component
+ * Tooltip - Simple tooltip implementation for the stock screener
  */
 class Tooltip {
-  constructor() {
-    this.tooltipElement = document.getElementById('tooltip');
-    
-    if (!this.tooltipElement) {
-      this.tooltipElement = document.createElement('div');
-      this.tooltipElement.id = 'tooltip';
-      document.body.appendChild(this.tooltipElement);
+    constructor() {
+        this.tooltipElement = document.getElementById('tooltip');
+        this.setupEventListeners();
     }
     
-    this.init();
-  }
-  
-  init() {
-    // Add event listeners to elements with title attribute
-    document.addEventListener('mouseover', (e) => {
-      const target = e.target;
-      if (target.title) {
-        this.show(target, target.title);
-        // Store the title and remove it to prevent default tooltip
-        target.dataset.tooltipText = target.title;
-        target.title = '';
-      }
-    });
-    
-    document.addEventListener('mouseout', (e) => {
-      const target = e.target;
-      if (target.dataset.tooltipText) {
-        this.hide();
-        // Restore the title
-        target.title = target.dataset.tooltipText;
-        delete target.dataset.tooltipText;
-      }
-    });
-    
-    document.addEventListener('mousemove', (e) => {
-      if (this.tooltipElement.style.display === 'block') {
-        this.position(e.clientX, e.clientY);
-      }
-    });
-  }
-  
-  show(element, text) {
-    this.tooltipElement.textContent = text;
-    this.tooltipElement.style.display = 'block';
-    this.position(element.getBoundingClientRect());
-  }
-  
-  position(rect) {
-    const tooltip = this.tooltipElement;
-    const margin = 10;
-    
-    // Position above the element if possible
-    let top = rect.top - tooltip.offsetHeight - margin;
-    
-    // If not enough space above, position below
-    if (top < 0) {
-      top = rect.bottom + margin;
+    /**
+     * Set up event listeners for tooltip
+     */
+    setupEventListeners() {
+        // Add event listeners to elements with title attribute
+        document.querySelectorAll('[title]').forEach(element => {
+            element.addEventListener('mouseenter', (e) => this.show(e));
+            element.addEventListener('mouseleave', () => this.hide());
+            element.addEventListener('mousemove', (e) => this.move(e));
+        });
     }
     
-    // Center horizontally
-    let left = rect.left + (rect.width / 2) - (tooltip.offsetWidth / 2);
-    
-    // Ensure tooltip is within viewport
-    if (left < margin) {
-      left = margin;
-    } else if (left + tooltip.offsetWidth > window.innerWidth - margin) {
-      left = window.innerWidth - tooltip.offsetWidth - margin;
+    /**
+     * Show tooltip
+     * @param {Event} e - Mouse event
+     */
+    show(e) {
+        const target = e.target;
+        const title = target.getAttribute('title');
+        
+        if (!title) return;
+        
+        // Store original title and remove it to prevent native tooltip
+        target.dataset.originalTitle = title;
+        target.removeAttribute('title');
+        
+        // Set tooltip content
+        this.tooltipElement.textContent = title;
+        this.tooltipElement.style.display = 'block';
+        
+        // Position tooltip
+        this.move(e);
     }
     
-    tooltip.style.top = `${top + window.scrollY}px`;
-    tooltip.style.left = `${left}px`;
-  }
-  
-  hide() {
-    this.tooltipElement.style.display = 'none';
-  }
+    /**
+     * Hide tooltip
+     */
+    hide() {
+        this.tooltipElement.style.display = 'none';
+        
+        // Restore original title
+        const element = document.querySelector('[data-original-title]');
+        if (element) {
+            element.setAttribute('title', element.dataset.originalTitle);
+            element.removeAttribute('data-original-title');
+        }
+    }
+    
+    /**
+     * Move tooltip with cursor
+     * @param {Event} e - Mouse event
+     */
+    move(e) {
+        const offset = 15;
+        let x = e.clientX + offset;
+        let y = e.clientY + offset;
+        
+        // Check if tooltip would go off screen
+        const tooltipWidth = this.tooltipElement.offsetWidth;
+        const tooltipHeight = this.tooltipElement.offsetHeight;
+        const windowWidth = window.innerWidth;
+        const windowHeight = window.innerHeight;
+        
+        if (x + tooltipWidth > windowWidth) {
+            x = windowWidth - tooltipWidth - offset;
+        }
+        
+        if (y + tooltipHeight > windowHeight) {
+            y = windowHeight - tooltipHeight - offset;
+        }
+        
+        this.tooltipElement.style.left = `${x}px`;
+        this.tooltipElement.style.top = `${y}px`;
+    }
 }

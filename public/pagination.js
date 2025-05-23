@@ -1,318 +1,299 @@
 /**
- * Pagination Component for Stock Screener
- * 
- * This module provides pagination functionality for the stock screener application.
- * It creates a pagination control that allows users to navigate through pages of stocks.
+ * PaginationControls - Pagination component for the stock screener
  */
-
-/**
- * Create a pagination component
- * @param {Object} options - Configuration options
- * @param {Number} options.currentPage - Current page number
- * @param {Number} options.totalPages - Total number of pages
- * @param {Function} options.onPageChange - Callback function when page changes
- * @param {Boolean} options.showPageSizeSelector - Whether to show page size selector
- * @param {Number} options.pageSize - Current page size
- * @param {Function} options.onPageSizeChange - Callback function when page size changes
- * @returns {HTMLElement} Pagination container element
- */
-function createPagination(options) {
-    const {
-        currentPage = 1,
-        totalPages = 1,
-        onPageChange = () => {},
-        showPageSizeSelector = false,
-        pageSize = 50,
-        onPageSizeChange = () => {}
-    } = options;
-
-    // Create container
-    const paginationContainer = document.createElement('div');
-    paginationContainer.className = 'pagination-container';
+class PaginationControls {
+    /**
+     * Create a new pagination control
+     * @param {Object} options - Pagination options
+     * @param {HTMLElement} options.container - Container element
+     * @param {Number} options.totalItems - Total number of items
+     * @param {Number} options.pageSize - Items per page
+     * @param {Number} options.currentPage - Current page
+     * @param {Function} options.onPageChange - Page change callback
+     */
+    constructor(options) {
+        this.container = options.container;
+        this.totalItems = options.totalItems || 0;
+        this.pageSize = options.pageSize || 50;
+        this.currentPage = options.currentPage || 1;
+        this.onPageChange = options.onPageChange || function() {};
+        
+        this.totalPages = Math.ceil(this.totalItems / this.pageSize);
+        
+        this.render();
+    }
     
-    // Create page size selector if enabled
-    if (showPageSizeSelector) {
-        const pageSizeContainer = document.createElement('div');
-        pageSizeContainer.className = 'page-size-container';
+    /**
+     * Update pagination
+     * @param {Number} totalItems - New total items
+     * @param {Number} currentPage - New current page
+     */
+    update(totalItems, currentPage) {
+        this.totalItems = totalItems;
+        this.currentPage = currentPage;
+        this.totalPages = Math.ceil(this.totalItems / this.pageSize);
+        
+        this.render();
+    }
+    
+    /**
+     * Go to specific page
+     * @param {Number} page - Page number
+     */
+    goToPage(page) {
+        if (page < 1 || page > this.totalPages) return;
+        
+        this.currentPage = page;
+        this.onPageChange(page, this.pageSize);
+        this.render();
+    }
+    
+    /**
+     * Render pagination controls
+     */
+    render() {
+        // Clear container
+        this.container.innerHTML = '';
+        
+        // Don't render if no items
+        if (this.totalItems === 0) return;
+        
+        // Create pagination wrapper
+        const paginationWrapper = document.createElement('div');
+        paginationWrapper.className = 'pagination-wrapper';
+        
+        // Create info text
+        const infoText = document.createElement('div');
+        infoText.className = 'pagination-info';
+        
+        const startItem = (this.currentPage - 1) * this.pageSize + 1;
+        const endItem = Math.min(this.currentPage * this.pageSize, this.totalItems);
+        
+        infoText.textContent = `Showing ${startItem}-${endItem} of ${this.totalItems} stocks`;
+        
+        // Create controls
+        const controls = document.createElement('div');
+        controls.className = 'pagination-controls';
+        
+        // Previous button
+        const prevButton = document.createElement('button');
+        prevButton.className = 'pagination-button prev';
+        prevButton.innerHTML = '&laquo;';
+        prevButton.disabled = this.currentPage === 1;
+        prevButton.addEventListener('click', () => this.goToPage(this.currentPage - 1));
+        
+        // Page buttons
+        const pageButtons = document.createElement('div');
+        pageButtons.className = 'pagination-pages';
+        
+        // Determine which pages to show
+        let pagesToShow = [];
+        
+        if (this.totalPages <= 7) {
+            // Show all pages if 7 or fewer
+            pagesToShow = Array.from({length: this.totalPages}, (_, i) => i + 1);
+        } else {
+            // Always show first and last page
+            pagesToShow.push(1);
+            
+            // Show ellipsis if not at start
+            if (this.currentPage > 3) {
+                pagesToShow.push('...');
+            }
+            
+            // Show pages around current page
+            const start = Math.max(2, this.currentPage - 1);
+            const end = Math.min(this.totalPages - 1, this.currentPage + 1);
+            
+            for (let i = start; i <= end; i++) {
+                pagesToShow.push(i);
+            }
+            
+            // Show ellipsis if not at end
+            if (this.currentPage < this.totalPages - 2) {
+                pagesToShow.push('...');
+            }
+            
+            // Add last page
+            pagesToShow.push(this.totalPages);
+        }
+        
+        // Create page buttons
+        pagesToShow.forEach(page => {
+            if (page === '...') {
+                const ellipsis = document.createElement('span');
+                ellipsis.className = 'pagination-ellipsis';
+                ellipsis.textContent = '...';
+                pageButtons.appendChild(ellipsis);
+            } else {
+                const button = document.createElement('button');
+                button.className = `pagination-button page ${page === this.currentPage ? 'active' : ''}`;
+                button.textContent = page;
+                button.addEventListener('click', () => this.goToPage(page));
+                pageButtons.appendChild(button);
+            }
+        });
+        
+        // Next button
+        const nextButton = document.createElement('button');
+        nextButton.className = 'pagination-button next';
+        nextButton.innerHTML = '&raquo;';
+        nextButton.disabled = this.currentPage === this.totalPages;
+        nextButton.addEventListener('click', () => this.goToPage(this.currentPage + 1));
+        
+        // Assemble controls
+        controls.appendChild(prevButton);
+        controls.appendChild(pageButtons);
+        controls.appendChild(nextButton);
+        
+        // Add page size selector
+        const pageSizeSelector = document.createElement('div');
+        pageSizeSelector.className = 'pagination-size-selector';
         
         const pageSizeLabel = document.createElement('span');
-        pageSizeLabel.className = 'page-size-label';
         pageSizeLabel.textContent = 'Items per page:';
         
         const pageSizeSelect = document.createElement('select');
-        pageSizeSelect.className = 'page-size-select';
+        pageSizeSelect.className = 'pagination-size-select';
         
-        [10, 25, 50, 100].forEach(size => {
+        [25, 50, 100, 250].forEach(size => {
             const option = document.createElement('option');
             option.value = size;
             option.textContent = size;
-            option.selected = size === pageSize;
+            option.selected = size === this.pageSize;
             pageSizeSelect.appendChild(option);
         });
         
-        pageSizeSelect.addEventListener('change', () => {
-            onPageSizeChange(parseInt(pageSizeSelect.value));
+        pageSizeSelect.addEventListener('change', (e) => {
+            this.pageSize = parseInt(e.target.value);
+            this.totalPages = Math.ceil(this.totalItems / this.pageSize);
+            this.goToPage(1);
         });
         
-        pageSizeContainer.appendChild(pageSizeLabel);
-        pageSizeContainer.appendChild(pageSizeSelect);
-        paginationContainer.appendChild(pageSizeContainer);
-    }
-    
-    // Create pagination controls
-    const paginationControls = document.createElement('div');
-    paginationControls.className = 'pagination-controls';
-    
-    // Previous button
-    const prevButton = document.createElement('button');
-    prevButton.className = 'pagination-button prev-button';
-    prevButton.innerHTML = '<span class="pagination-icon">←</span> Previous';
-    prevButton.disabled = currentPage <= 1;
-    prevButton.addEventListener('click', () => {
-        if (currentPage > 1) {
-            onPageChange(currentPage - 1);
-        }
-    });
-    
-    // Page numbers
-    const pageNumbers = document.createElement('div');
-    pageNumbers.className = 'page-numbers';
-    
-    // Calculate range of pages to show
-    const range = getPageRange(currentPage, totalPages);
-    
-    range.forEach(pageNum => {
-        if (pageNum === '...') {
-            // Ellipsis
-            const ellipsis = document.createElement('span');
-            ellipsis.className = 'page-ellipsis';
-            ellipsis.textContent = '...';
-            pageNumbers.appendChild(ellipsis);
-        } else {
-            // Page number button
-            const pageButton = document.createElement('button');
-            pageButton.className = `page-number ${pageNum === currentPage ? 'active' : ''}`;
-            pageButton.textContent = pageNum;
-            pageButton.addEventListener('click', () => {
-                if (pageNum !== currentPage) {
-                    onPageChange(pageNum);
+        pageSizeSelector.appendChild(pageSizeLabel);
+        pageSizeSelector.appendChild(pageSizeSelect);
+        
+        // Assemble pagination
+        paginationWrapper.appendChild(infoText);
+        paginationWrapper.appendChild(controls);
+        paginationWrapper.appendChild(pageSizeSelector);
+        
+        // Add to container
+        this.container.appendChild(paginationWrapper);
+        
+        // Add pagination styles if not already added
+        if (!document.getElementById('pagination-styles')) {
+            const style = document.createElement('style');
+            style.id = 'pagination-styles';
+            style.textContent = `
+                .pagination-wrapper {
+                    display: flex;
+                    flex-wrap: wrap;
+                    justify-content: space-between;
+                    align-items: center;
+                    margin-top: 20px;
+                    padding: 16px;
+                    background-color: #fff;
+                    border-radius: 8px;
+                    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
                 }
-            });
-            pageNumbers.appendChild(pageButton);
+                
+                .pagination-info {
+                    font-size: 14px;
+                    color: #666;
+                    margin-bottom: 10px;
+                    flex: 1 0 100%;
+                }
+                
+                .pagination-controls {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+                
+                .pagination-button {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-width: 36px;
+                    height: 36px;
+                    padding: 0 8px;
+                    border-radius: 4px;
+                    border: 1px solid #e1e4e8;
+                    background-color: #fff;
+                    font-size: 14px;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
+                }
+                
+                .pagination-button:hover:not(:disabled) {
+                    border-color: #0066ff;
+                    color: #0066ff;
+                }
+                
+                .pagination-button.active {
+                    background-color: #0066ff;
+                    color: #fff;
+                    border-color: #0066ff;
+                }
+                
+                .pagination-button:disabled {
+                    opacity: 0.5;
+                    cursor: not-allowed;
+                }
+                
+                .pagination-pages {
+                    display: flex;
+                    align-items: center;
+                    gap: 4px;
+                }
+                
+                .pagination-ellipsis {
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    min-width: 36px;
+                    height: 36px;
+                    font-size: 14px;
+                    color: #666;
+                }
+                
+                .pagination-size-selector {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                    font-size: 14px;
+                    color: #666;
+                }
+                
+                .pagination-size-select {
+                    padding: 6px 8px;
+                    border-radius: 4px;
+                    border: 1px solid #e1e4e8;
+                    background-color: #fff;
+                    font-size: 14px;
+                    cursor: pointer;
+                }
+                
+                @media (max-width: 768px) {
+                    .pagination-wrapper {
+                        flex-direction: column;
+                        align-items: flex-start;
+                        gap: 12px;
+                    }
+                    
+                    .pagination-controls {
+                        width: 100%;
+                        justify-content: center;
+                    }
+                    
+                    .pagination-size-selector {
+                        width: 100%;
+                        justify-content: flex-end;
+                    }
+                }
+            `;
+            document.head.appendChild(style);
         }
-    });
-    
-    // Next button
-    const nextButton = document.createElement('button');
-    nextButton.className = 'pagination-button next-button';
-    nextButton.innerHTML = 'Next <span class="pagination-icon">→</span>';
-    nextButton.disabled = currentPage >= totalPages;
-    nextButton.addEventListener('click', () => {
-        if (currentPage < totalPages) {
-            onPageChange(currentPage + 1);
-        }
-    });
-    
-    // Page info
-    const pageInfo = document.createElement('div');
-    pageInfo.className = 'page-info';
-    pageInfo.textContent = `Page ${currentPage} of ${totalPages}`;
-    
-    // Assemble pagination controls
-    paginationControls.appendChild(prevButton);
-    paginationControls.appendChild(pageNumbers);
-    paginationControls.appendChild(nextButton);
-    
-    // Add to container
-    paginationContainer.appendChild(paginationControls);
-    paginationContainer.appendChild(pageInfo);
-    
-    return paginationContainer;
-}
-
-/**
- * Calculate which page numbers to show
- * @param {Number} currentPage - Current page number
- * @param {Number} totalPages - Total number of pages
- * @returns {Array} Array of page numbers and ellipses to display
- */
-function getPageRange(currentPage, totalPages) {
-    // For small number of pages, show all
-    if (totalPages <= 7) {
-        return Array.from({ length: totalPages }, (_, i) => i + 1);
     }
-    
-    // For larger number of pages, show a subset with ellipses
-    const range = [];
-    
-    // Always include first page
-    range.push(1);
-    
-    // Calculate start and end of range around current page
-    if (currentPage <= 3) {
-        // Near the start
-        range.push(2, 3, 4, 5, '...', totalPages);
-    } else if (currentPage >= totalPages - 2) {
-        // Near the end
-        range.push('...', totalPages - 4, totalPages - 3, totalPages - 2, totalPages - 1, totalPages);
-    } else {
-        // In the middle
-        range.push('...', currentPage - 1, currentPage, currentPage + 1, '...', totalPages);
-    }
-    
-    return range;
 }
-
-/**
- * Add CSS styles for pagination
- */
-function addPaginationStyles() {
-    // Check if styles already exist
-    if (document.getElementById('pagination-styles')) {
-        return;
-    }
-    
-    const styleElement = document.createElement('style');
-    styleElement.id = 'pagination-styles';
-    styleElement.textContent = `
-        .pagination-container {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            margin: 24px 0;
-            gap: 12px;
-        }
-        
-        .pagination-controls {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .pagination-button {
-            padding: 8px 16px;
-            border: 1px solid #e1e4e8;
-            background-color: #fff;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .pagination-button:hover:not(:disabled) {
-            border-color: #0066ff;
-            color: #0066ff;
-        }
-        
-        .pagination-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-        }
-        
-        .pagination-icon {
-            font-size: 16px;
-        }
-        
-        .page-numbers {
-            display: flex;
-            align-items: center;
-            gap: 4px;
-        }
-        
-        .page-number {
-            width: 36px;
-            height: 36px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            border: 1px solid #e1e4e8;
-            background-color: #fff;
-            border-radius: 6px;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .page-number:hover:not(.active) {
-            border-color: #0066ff;
-            color: #0066ff;
-        }
-        
-        .page-number.active {
-            background-color: #0066ff;
-            color: #fff;
-            border-color: #0066ff;
-        }
-        
-        .page-ellipsis {
-            width: 36px;
-            height: 36px;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .page-info {
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .page-size-container {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            margin-bottom: 8px;
-        }
-        
-        .page-size-label {
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .page-size-select {
-            padding: 4px 8px;
-            border: 1px solid #e1e4e8;
-            border-radius: 4px;
-            font-size: 14px;
-            background-color: #fff;
-            cursor: pointer;
-        }
-        
-        @media (max-width: 576px) {
-            .pagination-controls {
-                flex-wrap: wrap;
-                justify-content: center;
-            }
-            
-            .pagination-button {
-                padding: 6px 12px;
-                font-size: 13px;
-            }
-            
-            .page-number {
-                width: 32px;
-                height: 32px;
-                font-size: 13px;
-            }
-            
-            .page-ellipsis {
-                width: 24px;
-            }
-        }
-    `;
-    
-    document.head.appendChild(styleElement);
-}
-
-// Export functions
-window.StockPagination = {
-    createPagination,
-    addPaginationStyles
-};
