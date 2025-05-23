@@ -1,0 +1,96 @@
+/* Additional icon styles for missing icons */
+.mid-cap-icon {
+    background-image: url('icons/large-cap.svg');
+}
+
+.small-cap-icon {
+    background-image: url('icons/large-cap.svg');
+}
+
+.micro-cap-icon {
+    background-image: url('icons/large-cap.svg');
+}
+
+.nasdaq-icon {
+    background-image: url('icons/globe.svg');
+}
+
+.nyse-icon {
+    background-image: url('icons/globe.svg');
+}
+
+.high-volume-icon {
+    background-image: url('icons/wave.svg');
+}
+
+.medium-volume-icon {
+    background-image: url('icons/wave.svg');
+}
+
+.low-volume-icon {
+    background-image: url('icons/wave.svg');
+}
+
+.low-pe-icon {
+    background-image: url('icons/calculator.svg');
+}
+
+.medium-pe-icon {
+    background-image: url('icons/calculator.svg');
+}
+
+.high-pe-icon {
+    background-image: url('icons/calculator.svg');
+}
+
+.negative-pe-icon {
+    background-image: url('icons/calculator.svg');
+}
+
+.high-dividend-icon {
+    background-image: url('icons/coin.svg');
+}
+
+.medium-dividend-icon {
+    background-image: url('icons/coin.svg');
+}
+
+.low-dividend-icon {
+    background-image: url('icons/coin.svg');
+}
+
+.no-dividend-icon {
+    background-image: url('icons/coin.svg');
+}
+
+.no-debt-icon {
+    background-image: url('icons/balance.svg');
+}
+
+.low-debt-icon {
+    background-image: url('icons/balance.svg');
+}
+
+.medium-debt-icon {
+    background-image: url('icons/balance.svg');
+}
+
+.high-debt-icon {
+    background-image: url('icons/balance.svg');
+}
+
+.value-icon {
+    background-image: url('icons/star.svg');
+}
+
+.growth-icon {
+    background-image: url('icons/star.svg');
+}
+
+.dividend-icon {
+    background-image: url('icons/star.svg');
+}
+
+.quality-icon {
+    background-image: url('icons/star.svg');
+}

@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock API Test</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        h1 {
+            color: #0066ff;
+        }
+        button {
+            background-color: #0066ff;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        button:hover {
+            background-color: #0055dd;
+        }
+        pre {
+            background-color: #f5f5f7;
+            padding: 15px;
+            border-radius: 4px;
+            overflow-x: auto;
+            max-height: 400px;
+            overflow-y: auto;
+        }
+        .status {
+            padding: 10px;
+            margin: 10px 0;
+            border-radius: 4px;
+        }
+        .success {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        .error {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        .loading {
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }
+    </style>
+</head>
+<body>
+    <h1>Stock API Test</h1>
+    <p>This page tests direct connectivity to the Stock API endpoints.</p>
+    
+    <div>
+        <button id="testDirectApi">Test Direct API</button>
+        <button id="testRelativeApi">Test Relative API</button>
+        <button id="clearCache">Clear Cache</button>
+    </div>
+    
+    <div id="status" class="status"></div>
+    
+    <h2>API Response:</h2>
+    <pre id="response">No data yet. Click a test button above.</pre>
+    
+    <script>
+        // Get DOM elements
+        const statusEl = document.getElementById('status');
+        const responseEl = document.getElementById('response');
+        const testDirectApiBtn = document.getElementById('testDirectApi');
+        const testRelativeApiBtn = document.getElementById('testRelativeApi');
+        const clearCacheBtn = document.getElementById('clearCache');
+        
+        // Set status
+        function setStatus(message, type) {
+            statusEl.textContent = message;
+            statusEl.className = 'status ' + type;
+        }
+        
+        // Test direct API
+        testDirectApiBtn.addEventListener('click', async function() {
+            try {
+                setStatus('Testing direct API call...', 'loading');
+                responseEl.textContent = 'Loading...';
+                
+                // Get the current protocol and host
+                const currentProtocol = window.location.protocol;
+                const currentHost = window.location.host;
+                
+                // Build the API URL
+                const apiUrl = `${currentProtocol}//${currentHost}/api/stocks?page=1&limit=5`;
+                
+                console.log('Testing direct API call to:', apiUrl);
+                
+                // Make the API call
+                const response = await fetch(apiUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+                }
+                
+                // Parse the response
+                const data = await response.json();
+                
+                // Display the response
+                responseEl.textContent = JSON.stringify(data, null, 2);
+                
+                // Set status
+                setStatus(`Success! Received ${data.stocks?.length || 0} stocks.`, 'success');
+                
+            } catch (error) {
+                console.error('API test failed:', error);
+                setStatus(`Error: ${error.message}`, 'error');
+                responseEl.textContent = `Error: ${error.message}\n\nStack: ${error.stack}`;
+            }
+        });
+        
+        // Test relative API
+        testRelativeApiBtn.addEventListener('click', async function() {
+            try {
+                setStatus('Testing relative API call...', 'loading');
+                responseEl.textContent = 'Loading...';
+                
+                // Use relative URL
+                const apiUrl = '/api/stocks?page=1&limit=5';
+                
+                console.log('Testing relative API call to:', apiUrl);
+                
+                // Make the API call
+                const response = await fetch(apiUrl, {
+                    method: 'GET',
+                    headers: {
+                        'Accept': 'application/json',
+                        'Cache-Control': 'no-cache'
+                    }
+                });
+                
+                if (!response.ok) {
+                    throw new Error(`HTTP error ${response.status}: ${response.statusText}`);
+                }
+                
+                // Parse the response
+                const data = await response.json();
+                
+                // Display the response
+                responseEl.textContent = JSON.stringify(data, null, 2);
+                
+                // Set status
+                setStatus(`Success! Received ${data.stocks?.length || 0} stocks.`, 'success');
+                
+            } catch (error) {
+                console.error('API test failed:', error);
+                setStatus(`Error: ${error.message}`, 'error');
+                responseEl.textContent = `Error: ${error.message}\n\nStack: ${error.stack}`;
+            }
+        });
+        
+        // Clear cache
+        clearCacheBtn.addEventListener('click', function() {
+            try {
+                // Clear localStorage
+                localStorage.clear();
+                
+                // Clear sessionStorage
+                sessionStorage.clear();
+                
+                // Clear caches if available
+                if ('caches' in window) {
+                    caches.keys().then(function(names) {
+                        for (let name of names) {
+                            caches.delete(name);
+                        }
+                    });
+                }
+                
+                setStatus('Cache cleared successfully!', 'success');
+            } catch (error) {
+                console.error('Cache clear failed:', error);
+                setStatus(`Error clearing cache: ${error.message}`, 'error');
+            }
+        });
+        
+        // Initial status
+        setStatus('Ready to test API connectivity', 'loading');
+    </script>
+</body>
+</html>
