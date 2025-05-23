@@ -639,6 +639,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Reset to first page and apply filters
         pagination.goToPage(1);
+        
+        // Explicitly reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -673,6 +676,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Reset to first page and apply filters
         pagination.goToPage(1);
+        
+        // Explicitly reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
