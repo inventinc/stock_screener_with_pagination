@@ -1,22 +1,15 @@
 /**
  * PaginatedStockApp - Stock screener application with pagination and adaptive card view
- *
+ * 
  * Features:
  * - Classic pagination with modern UX
  * - Adaptive card heights for mobile
  * - Optimized data loading
  * - Responsive design for all devices
  */
-
-// Export key functions to global scope for accessibility
-window.toggleFilter = toggleFilter;
-window.togglePreset = togglePreset;
-window.loadStocksPage = loadStocksPage;
-window.activeFilters = {};
-
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
-    const stockCardsContainer = document.getElementById('stock-cards-container');
+    const stockCardsContainer = document.getElementById('stock-cards');
     const stockTableContainer = document.getElementById('stock-table-container');
     const paginationContainer = document.getElementById('pagination-container');
     const totalStocksElement = document.getElementById('total-stocks');
@@ -30,14 +23,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const filtersContent = document.getElementById('filters-content');
     const cardViewButton = document.getElementById('card-view-button');
     const tableViewButton = document.getElementById('table-view-button');
-
+    
     // State
     let currentView = 'card'; // 'card' or 'table'
-    window.activeFilters = {}; // Moved to global scope
+    let activeFilters = {};
     let currentStocks = [];
     let totalItems = 0;
     let isLoading = false;
-
+    
     // Initialize pagination controls
     const pagination = new PaginationControls({
         container: paginationContainer,
@@ -46,82 +39,77 @@ document.addEventListener('DOMContentLoaded', function() {
         currentPage: 1,
         onPageChange: handlePageChange
     });
-
+    
     // Initialize tooltip
     const tooltip = new Tooltip();
-
+    
     // Initialize app
     initApp();
-
+    
     /**
      * Initialize the application
      */
     function initApp() {
         // Set up event listeners
         setupEventListeners();
-
+        
         // Load initial data
         loadInitialData();
-
+        
         // Update API status
         updateApiStatus(true);
     }
-
+    
     /**
      * Set up event listeners
      */
     function setupEventListeners() {
         // Filters toggle
-        if (filtersToggle) {
-            filtersToggle.addEventListener('click', toggleFilters);
-        }
-
+        filtersToggle.addEventListener('click', toggleFilters);
+        
         // View buttons
-        if (cardViewButton && tableViewButton) {
-            cardViewButton.addEventListener('click', () => switchView('card'));
-            tableViewButton.addEventListener('click', () => switchView('table'));
-        }
-
+        cardViewButton.addEventListener('click', () => switchView('card'));
+        tableViewButton.addEventListener('click', () => switchView('table'));
+        
         // Search input
-        if (searchInput) {
-            searchInput.addEventListener('input', debounce(handleSearch, 300));
-        }
-
+        searchInput.addEventListener('input', debounce(handleSearch, 300));
+        
         // Filter buttons
         document.querySelectorAll('.filter-button').forEach(button => {
             button.addEventListener('click', () => toggleFilter(button));
         });
-
+        
         // Preset buttons
         document.querySelectorAll('.preset-button').forEach(button => {
             button.addEventListener('click', () => togglePreset(button));
         });
-
+        
         // Window resize
         window.addEventListener('resize', debounce(handleResize, 200));
     }
-
+    
     /**
      * Load initial data
      */
     function loadInitialData() {
         // Show loading state
         setLoading(true);
-
+        
         // Get pagination parameters from URL or defaults
         const urlParams = new URLSearchParams(window.location.search);
         const page = parseInt(urlParams.get('page')) || 1;
         const pageSize = parseInt(urlParams.get('pageSize')) || 50;
-
+        
         // Update pagination control
         pagination.currentPage = page;
         pagination.pageSize = pageSize;
-
+        
         // Load stats
         fetch('/api/stats')
             .then(response => response.json())
             .then(stats => {
                 updateStats(stats);
+                
                 // Load first page of stocks
                 return loadStocksPage(page, pageSize);
             })
@@ -131,157 +119,71 @@ document.addEventListener('DOMContentLoaded', function() {
                 setLoading(false);
             });
     }
-
+    
     /**
-     * Handle page change
+     * Load a specific page of stocks
+     * @param {Number} page - Page number
+     * @param {Number} pageSize - Items per page
+     * @returns {Promise} Promise that resolves with loaded stocks
      */
-    function handlePageChange(page, pageSize) {
-        loadStocksPage(page, pageSize);
-    }
-
-    /**
-     * Switch view between card and table
-     */
-    function switchView(view) {
-        currentView = view;
+    function loadStocksPage(page, pageSize) {
+        setLoading(true);
         
-        // Update active state of view buttons
-        if (cardViewButton && tableViewButton) {
-            if (view === 'card') {
-                cardViewButton.classList.add('active');
-                tableViewButton.classList.remove('active');
-            } else {
-                cardViewButton.classList.remove('active');
-                tableViewButton.classList.add('active');
+        // Build query parameters
+        const params = new URLSearchParams({
+            page: page,
+            pageSize: pageSize
+        });
+        
+        // Add filter parameters
+        Object.entries(activeFilters).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+                value.forEach(v => params.append(key, v));
+            } else if (value) {
+                params.append(key, value);
             }
-        }
+        });
         
-        // Re-render stocks with current view
-        renderStocks(currentStocks);
-    }
-
-    /**
-     * Toggle filters panel
-     */
-    function toggleFilters() {
-        if (filtersContent) {
-            filtersContent.classList.toggle('collapsed');
-        }
-        if (filtersToggle) {
-            const toggleIcon = filtersToggle.querySelector('.filters-toggle');
-            if (toggleIcon) {
-                toggleIcon.classList.toggle('collapsed');
-            }
-        }
-    }
-
-    /**
-     * Handle search input
-     */
-    function handleSearch() {
-        if (searchInput) {
-            const searchTerm = searchInput.value.trim();
-            
-            // Update active filters
-            if (searchTerm) {
-                window.activeFilters.search = searchTerm;
-            } else {
-                delete window.activeFilters.search;
-            }
-            
-            // Reload data with search filter
-            loadStocksPage(1, pagination.pageSize);
-        }
-    }
-
-    /**
-     * Handle window resize
-     */
-    function handleResize() {
-        // Re-render stocks to adjust card heights
-        if (currentView === 'card') {
-            renderStocks(currentStocks);
-        }
-    }
-
-    /**
-     * Set loading state
-     */
-    function setLoading(loading) {
-        isLoading = loading;
-        
-        // Update loading UI
-        const loadingProgressBar = document.querySelector('.loading-progress-bar');
-        const loadingProgressText = document.querySelector('.loading-progress-text');
-        
-        if (loadingProgressBar && loadingProgressText) {
-            if (loading) {
-                loadingProgressBar.style.display = 'block';
-                loadingProgressText.style.display = 'block';
-                
-                // Animate progress bar
-                const progressInner = loadingProgressBar.querySelector('.progress-inner');
-                if (progressInner) {
-                    progressInner.style.width = '0%';
-                    setTimeout(() => {
-                        progressInner.style.width = '70%';
-                    }, 100);
+        // Fetch stocks from API
+        return fetch(`/api/stocks?${params.toString()}`)
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error(`API error: ${response.status} ${response.statusText}`);
                 }
-            } else {
-                // Complete progress animation
-                const progressInner = loadingProgressBar.querySelector('.progress-inner');
-                if (progressInner) {
-                    progressInner.style.width = '100%';
+                return response.json();
+            })
+            .then(data => {
+                if (!data || !data.stocks || !Array.isArray(data.stocks)) {
+                    throw new Error('Invalid API response format');
                 }
                 
-                // Hide loading UI after animation
-                setTimeout(() => {
-                    loadingProgressBar.style.display = 'none';
-                    loadingProgressText.style.display = 'none';
-                }, 300);
-            }
-        }
+                // Process stocks data
+                const processedStocks = processStocksData(data.stocks);
+                
+                // Update state
+                currentStocks = processedStocks;
+                totalItems = data.pagination ? data.pagination.total : processedStocks.length;
+                
+                // Update pagination
+                pagination.update(totalItems, page);
+                
+                // Render stocks
+                renderStocks(processedStocks);
+                
+                // Update API status
+                updateApiStatus(true);
+                
+                setLoading(false);
+                return processedStocks;
+            })
+            .catch(error => {
+                console.error('Error loading stocks:', error);
+                updateApiStatus(false);
+                setLoading(false);
+                throw error;
+            });
     }
-
-    /**
-     * Update API status indicator
-     */
-    function updateApiStatus(connected) {
-        if (apiStatusIndicator && apiStatusText) {
-            if (connected) {
-                apiStatusIndicator.classList.remove('disconnected');
-                apiStatusIndicator.classList.add('connected');
-                apiStatusText.textContent = 'connected';
-            } else {
-                apiStatusIndicator.classList.remove('connected');
-                apiStatusIndicator.classList.add('disconnected');
-                apiStatusText.textContent = 'disconnected';
-            }
-        }
-    }
-
-    /**
-     * Update stats display
-     */
-    function updateStats(stats) {
-        if (totalStocksElement) {
-            totalStocksElement.textContent = stats.total.toLocaleString();
-        }
-        
-        if (nyseStocksElement) {
-            nyseStocksElement.textContent = stats.nyse.toLocaleString();
-        }
-        
-        if (nasdaqStocksElement) {
-            nasdaqStocksElement.textContent = stats.nasdaq.toLocaleString();
-        }
-        
-        if (lastUpdatedElement && stats.lastUpdated) {
-            const date = new Date(stats.lastUpdated);
-            lastUpdatedElement.textContent = `${date.toLocaleDateString()}, ${date.toLocaleTimeString()}`;
-        }
-    }
-
+    
     /**
      * Process stocks data
      * @param {Array} stocks - Raw stocks data
@@ -293,16 +195,19 @@ document.addEventListener('DOMContentLoaded', function() {
             if (stock.price) {
                 stock.formattedPrice = formatCurrency(stock.price);
             }
+            
             if (stock.marketCap) {
                 stock.formattedMarketCap = formatLargeNumber(stock.marketCap);
             }
+            
             if (stock.avgDollarVolume) {
                 stock.formattedVolume = formatLargeNumber(stock.avgDollarVolume);
             }
+            
             return stock;
         });
     }
-
+    
     /**
      * Render stocks in current view
      * @param {Array} stocks - Stocks to render
@@ -314,9 +219,521 @@ document.addEventListener('DOMContentLoaded', function() {
             renderTableView(stocks);
         }
     }
-
+    
     /**
-     * Debounce function to limit function calls
+     * Render card view
+     * @param {Array} stocks - Stocks to render
+     */
+    function renderCardView(stocks) {
+        // Clear container
+        stockCardsContainer.innerHTML = '';
+        
+        // Show loading skeleton if loading
+        if (isLoading) {
+            renderCardSkeletons();
+            return;
+        }
+        
+        // Show empty state if no stocks
+        if (!stocks || stocks.length === 0) {
+            stockCardsContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div class="empty-title">No stocks found</div>
+                    <div class="empty-message">Try adjusting your filters or search criteria</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // Render each stock card
+        stocks.forEach(stock => {
+            const cardElement = document.createElement('div');
+            renderStockCard(stock, cardElement);
+            stockCardsContainer.appendChild(cardElement);
+        });
+    }
+    
+    /**
+     * Render table view
+     * @param {Array} stocks - Stocks to render
+     */
+    function renderTableView(stocks) {
+        // Clear container
+        stockTableContainer.innerHTML = '';
+        
+        // Show loading skeleton if loading
+        if (isLoading) {
+            renderTableSkeleton();
+            return;
+        }
+        
+        // Show empty state if no stocks
+        if (!stocks || stocks.length === 0) {
+            stockTableContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div class="empty-title">No stocks found</div>
+                    <div class="empty-message">Try adjusting your filters or search criteria</div>
+                </div>
+            `;
+            return;
+        }
+        
+        // Create table
+        const table = document.createElement('table');
+        table.className = 'stock-table';
+        
+        // Create table header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        
+        // Define columns
+        const columns = [
+            { field: 'symbol', label: 'Symbol' },
+            { field: 'name', label: 'Name' },
+            { field: 'exchange', label: 'Exchange' },
+            { field: 'price', label: 'Price' },
+            { field: 'marketCap', label: 'Market Cap' },
+            { field: 'peRatio', label: 'P/E Ratio' },
+            { field: 'dividendYield', label: 'Div Yield' },
+            { field: 'netDebtToEBITDA', label: 'Debt/EBITDA' },
+            { field: 'score', label: 'Score' }
+        ];
+        
+        // Create header cells
+        columns.forEach(column => {
+            const th = document.createElement('th');
+            th.textContent = column.label;
+            headerRow.appendChild(th);
+        });
+        
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        
+        // Create table body
+        const tbody = document.createElement('tbody');
+        
+        // Create rows
+        stocks.forEach(stock => {
+            const row = document.createElement('tr');
+            
+            // Add cells
+            columns.forEach(column => {
+                const cell = document.createElement('td');
+                
+                // Get value
+                let value = stock[column.field];
+                
+                // Format value
+                if (column.field === 'symbol') {
+                    cell.innerHTML = `<span class="stock-symbol-cell">${value}</span>`;
+                } else if (column.field === 'price') {
+                    cell.textContent = stock.formattedPrice || formatCurrency(value) || 'N/A';
+                } else if (column.field === 'marketCap') {
+                    cell.textContent = stock.formattedMarketCap || formatLargeNumber(value) || 'N/A';
+                } else if (column.field === 'peRatio') {
+                    cell.textContent = value ? value.toFixed(2) : 'N/A';
+                } else if (column.field === 'dividendYield') {
+                    cell.textContent = value ? (value * 100).toFixed(2) + '%' : 'N/A';
+                } else if (column.field === 'netDebtToEBITDA') {
+                    cell.textContent = value ? value.toFixed(2) + 'x' : 'N/A';
+                } else if (column.field === 'score') {
+                    cell.innerHTML = renderScore(value);
+                } else {
+                    cell.textContent = value || 'N/A';
+                }
+                
+                row.appendChild(cell);
+            });
+            
+            tbody.appendChild(row);
+        });
+        
+        table.appendChild(tbody);
+        stockTableContainer.appendChild(table);
+    }
+    
+    /**
+     * Render stock card
+     * @param {Object} stock - Stock data
+     * @param {HTMLElement} container - Container element
+     */
+    function renderStockCard(stock, container) {
+        // Clear container
+        container.innerHTML = '';
+        container.className = 'stock-card';
+        
+        // Check if stock has incomplete data
+        const hasIncompleteData = !stock.price || !stock.marketCap || !stock.peRatio;
+        if (hasIncompleteData) {
+            container.classList.add('incomplete-data');
+        }
+        
+        // Create card content with adaptive height
+        const content = `
+            <div class="stock-header">
+                <div class="stock-symbol">${stock.symbol}</div>
+                <div class="stock-exchange">${stock.exchange || 'N/A'}</div>
+            </div>
+            <div class="stock-name">${stock.name || 'Unknown'}</div>
+            <div class="stock-metrics">
+                <div class="metric">
+                    <div class="metric-label">Price</div>
+                    <div class="metric-value">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Market Cap</div>
+                    <div class="metric-value">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">P/E Ratio</div>
+                    <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Dividend Yield</div>
+                    <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Debt/EBITDA</div>
+                    <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Score</div>
+                    <div class="metric-value">
+                        ${renderScore(stock.score)}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = content;
+    }
+    
+    /**
+     * Render card skeletons for loading state
+     */
+    function renderCardSkeletons() {
+        const pageSize = pagination.pageSize;
+        
+        for (let i = 0; i < Math.min(pageSize, 12); i++) {
+            const skeleton = document.createElement('div');
+            skeleton.className = 'stock-card skeleton';
+            skeleton.innerHTML = `
+                <div class="skeleton-header">
+                    <div class="skeleton-symbol"></div>
+                    <div class="skeleton-exchange"></div>
+                </div>
+                <div class="skeleton-name"></div>
+                <div class="skeleton-metrics">
+                    <div class="skeleton-metric"></div>
+                    <div class="skeleton-metric"></div>
+                    <div class="skeleton-metric"></div>
+                    <div class="skeleton-metric"></div>
+                    <div class="skeleton-metric"></div>
+                    <div class="skeleton-metric"></div>
+                </div>
+            `;
+            stockCardsContainer.appendChild(skeleton);
+        }
+    }
+    
+    /**
+     * Render table skeleton for loading state
+     */
+    function renderTableSkeleton() {
+        const pageSize = pagination.pageSize;
+        
+        const table = document.createElement('table');
+        table.className = 'stock-table skeleton-table';
+        
+        // Create table header
+        const thead = document.createElement('thead');
+        const headerRow = document.createElement('tr');
+        
+        // Create header cells
+        for (let i = 0; i < 9; i++) {
+            const th = document.createElement('th');
+            th.innerHTML = '<div class="skeleton-header"></div>';
+            headerRow.appendChild(th);
+        }
+        
+        thead.appendChild(headerRow);
+        table.appendChild(thead);
+        
+        // Create table body
+        const tbody = document.createElement('tbody');
+        
+        // Create rows
+        for (let i = 0; i < Math.min(pageSize, 20); i++) {
+            const row = document.createElement('tr');
+            
+            // Add cells
+            for (let j = 0; j < 9; j++) {
+                const cell = document.createElement('td');
+                cell.innerHTML = '<div class="skeleton-cell"></div>';
+                row.appendChild(cell);
+            }
+            
+            tbody.appendChild(row);
+        }
+        
+        table.appendChild(tbody);
+        stockTableContainer.appendChild(table);
+    }
+    
+    /**
+     * Render score
+     * @param {Number} score - Score value
+     * @returns {String} HTML for score
+     */
+    function renderScore(score) {
+        if (!score && score !== 0) return 'N/A';
+        
+        let scoreClass = '';
+        if (score >= 80) scoreClass = 'excellent';
+        else if (score >= 60) scoreClass = 'good';
+        else if (score >= 40) scoreClass = 'average';
+        else if (score >= 20) scoreClass = 'below-average';
+        else scoreClass = 'poor';
+        
+        return `<span class="score ${scoreClass}">${score}</span>`;
+    }
+    
+    /**
+     * Handle page change
+     * @param {Number} page - New page number
+     * @param {Number} pageSize - Items per page
+     */
+    function handlePageChange(page, pageSize) {
+        loadStocksPage(page, pageSize);
+    }
+    
+    /**
+     * Update stats
+     * @param {Object} stats - Stats data
+     */
+    function updateStats(stats) {
+        if (!stats) return;
+        
+        // Update stats in UI
+        totalStocksElement.textContent = formatNumber(stats.total || 0);
+        nyseStocksElement.textContent = formatNumber(stats.nyse || 0);
+        nasdaqStocksElement.textContent = formatNumber(stats.nasdaq || 0);
+        
+        // Update last updated
+        if (stats.lastUpdated) {
+            const date = new Date(stats.lastUpdated);
+            lastUpdatedElement.textContent = date.toLocaleString();
+        }
+    }
+    
+    /**
+     * Update API status
+     * @param {Boolean} connected - Whether API is connected
+     */
+    function updateApiStatus(connected) {
+        if (connected) {
+            apiStatusIndicator.classList.remove('disconnected');
+            apiStatusIndicator.classList.add('connected');
+            apiStatusText.textContent = 'connected';
+        } else {
+            apiStatusIndicator.classList.remove('connected');
+            apiStatusIndicator.classList.add('disconnected');
+            apiStatusText.textContent = 'disconnected';
+        }
+    }
+    
+    /**
+     * Set loading state
+     * @param {Boolean} loading - Whether data is loading
+     */
+    function setLoading(loading) {
+        isLoading = loading;
+        
+        // Update loading indicator
+        document.body.classList.toggle('loading', loading);
+        
+        // Render appropriate view
+        if (loading) {
+            renderStocks([]);
+        }
+    }
+    
+    /**
+     * Toggle filters
+     */
+    function toggleFilters() {
+        filtersContent.classList.toggle('collapsed');
+        filtersToggle.classList.toggle('collapsed');
+    }
+    
+    /**
+     * Switch view
+     * @param {String} view - View to switch to ('card' or 'table')
+     */
+    function switchView(view) {
+        if (currentView === view) return;
+        
+        currentView = view;
+        
+        // Update active button
+        cardViewButton.classList.toggle('active', view === 'card');
+        tableViewButton.classList.toggle('active', view === 'table');
+        
+        // Show/hide containers
+        stockCardsContainer.style.display = view === 'card' ? 'grid' : 'none';
+        stockTableContainer.style.display = view === 'table' ? 'block' : 'none';
+        
+        // Render current stocks in new view
+        renderStocks(currentStocks);
+    }
+    
+    /**
+     * Handle search
+     */
+    function handleSearch() {
+        const searchValue = searchInput.value.trim();
+        
+        // Update active filters
+        if (searchValue) {
+            activeFilters.search = searchValue;
+        } else {
+            delete activeFilters.search;
+        }
+        
+        // Reset to first page and apply filters
+        pagination.goToPage(1);
+    }
+    
+    /**
+     * Toggle filter
+     * @param {HTMLElement} button - Filter button
+     */
+    function toggleFilter(button) {
+        const filter = button.dataset.filter;
+        const value = button.dataset.value;
+        
+        // Toggle active state
+        button.classList.toggle('active');
+        
+        // Update active filters
+        if (!activeFilters[filter]) {
+            activeFilters[filter] = [];
+        }
+        
+        if (button.classList.contains('active')) {
+            // Add filter
+            if (!activeFilters[filter].includes(value)) {
+                activeFilters[filter].push(value);
+            }
+        } else {
+            // Remove filter
+            activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
+            
+            // Remove empty filter
+            if (activeFilters[filter].length === 0) {
+                delete activeFilters[filter];
+            }
+        }
+        
+        // Reset to first page and apply filters
+        pagination.goToPage(1);
+    }
+    
+    /**
+     * Toggle preset
+     * @param {HTMLElement} button - Preset button
+     */
+    function togglePreset(button) {
+        const preset = button.dataset.preset;
+        
+        // Toggle active state
+        button.classList.toggle('active');
+        
+        // Update active filters
+        if (!activeFilters.preset) {
+            activeFilters.preset = [];
+        }
+        
+        if (button.classList.contains('active')) {
+            // Add preset
+            if (!activeFilters.preset.includes(preset)) {
+                activeFilters.preset.push(preset);
+            }
+        } else {
+            // Remove preset
+            activeFilters.preset = activeFilters.preset.filter(p => p !== preset);
+            
+            // Remove empty preset
+            if (activeFilters.preset.length === 0) {
+                delete activeFilters.preset;
+            }
+        }
+        
+        // Reset to first page and apply filters
+        pagination.goToPage(1);
+    }
+    
+    /**
+     * Handle resize
+     */
+    function handleResize() {
+        // Refresh current view
+        renderStocks(currentStocks);
+    }
+    
+    /**
+     * Format currency
+     * @param {Number} value - Value to format
+     * @returns {String} Formatted currency
+     */
+    function formatCurrency(value) {
+        if (value === null || value === undefined) return null;
+        
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
+    }
+    
+    /**
+     * Format large number
+     * @param {Number} value - Value to format
+     * @returns {String} Formatted number
+     */
+    function formatLargeNumber(value) {
+        if (value === null || value === undefined) return null;
+        
+        if (value >= 1e12) {
+            return '$' + (value / 1e12).toFixed(2) + 'T';
+        } else if (value >= 1e9) {
+            return '$' + (value / 1e9).toFixed(2) + 'B';
+        } else if (value >= 1e6) {
+            return '$' + (value / 1e6).toFixed(2) + 'M';
+        } else if (value >= 1e3) {
+            return '$' + (value / 1e3).toFixed(2) + 'K';
+        } else {
+            return '$' + value.toFixed(2);
+        }
+    }
+    
+    /**
+     * Format number
+     * @param {Number} value - Value to format
+     * @returns {String} Formatted number
+     */
+    function formatNumber(value) {
+        return new Intl.NumberFormat('en-US').format(value);
+    }
+    
+    /**
+     * Debounce function
+     * @param {Function} func - Function to debounce
+     * @param {Number} wait - Wait time in milliseconds
+     * @returns {Function} Debounced function
      */
     function debounce(func, wait) {
         let timeout;
@@ -326,283 +743,3 @@ document.addEventListener('DOMContentLoaded', function() {
         };
     }
 });
-
-/**
- * Load a specific page of stocks
- * @param {Number} page - Page number
- * @param {Number} pageSize - Items per page
- * @returns {Promise} Promise that resolves with loaded stocks
- */
-function loadStocksPage(page, pageSize) {
-    console.log("loadStocksPage called with page:", page, "pageSize:", pageSize);
-    console.log("Active filters:", window.activeFilters);
-    
-    // Show loading state
-    const loadingProgressBar = document.querySelector('.loading-progress-bar');
-    const loadingProgressText = document.querySelector('.loading-progress-text');
-    
-    if (loadingProgressBar && loadingProgressText) {
-        loadingProgressBar.style.display = 'block';
-        loadingProgressText.style.display = 'block';
-        
-        // Animate progress bar
-        const progressInner = loadingProgressBar.querySelector('.progress-inner');
-        if (progressInner) {
-            progressInner.style.width = '0%';
-            setTimeout(() => {
-                progressInner.style.width = '70%';
-            }, 100);
-        }
-    }
-
-    // Build query parameters
-    const params = new URLSearchParams({
-        page: page,
-        pageSize: pageSize
-    });
-
-    // Add filter parameters
-    Object.entries(window.activeFilters).forEach(([key, value]) => {
-        if (Array.isArray(value)) {
-            value.forEach(v => params.append(key, v));
-        } else if (value) {
-            params.append(key, value);
-        }
-    });
-
-    console.log("API request URL:", `/api/stocks?${params.toString()}`);
-
-    // Fetch stocks from API
-    return fetch(`/api/stocks?${params.toString()}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error(`API error: ${response.status} ${response.statusText}`);
-            }
-            return response.json();
-        })
-        .then(data => {
-            console.log("API response:", data);
-            
-            if (!data || !data.stocks || !Array.isArray(data.stocks)) {
-                throw new Error('Invalid API response format');
-            }
-
-            // Process stocks data
-            const processedStocks = data.stocks.map(stock => {
-                // Format numbers for display
-                if (stock.price) {
-                    stock.formattedPrice = formatCurrency(stock.price);
-                }
-                if (stock.marketCap) {
-                    stock.formattedMarketCap = formatLargeNumber(stock.marketCap);
-                }
-                if (stock.avgDollarVolume) {
-                    stock.formattedVolume = formatLargeNumber(stock.avgDollarVolume);
-                }
-                return stock;
-            });
-
-            // Update state
-            const currentStocks = processedStocks;
-            const totalItems = data.pagination ? data.pagination.total : processedStocks.length;
-
-            // Update pagination
-            const paginationContainer = document.getElementById('pagination-container');
-            if (paginationContainer && window.PaginationControls) {
-                const pagination = new PaginationControls({
-                    container: paginationContainer,
-                    totalItems: totalItems,
-                    pageSize: pageSize,
-                    currentPage: page,
-                    onPageChange: (newPage, newPageSize) => loadStocksPage(newPage, newPageSize)
-                });
-                pagination.update(totalItems, page);
-            }
-
-            // Render stocks
-            if (currentStocks && currentStocks.length > 0) {
-                const currentView = document.getElementById('card-view-button').classList.contains('active') ? 'card' : 'table';
-                if (currentView === 'card') {
-                    renderCardView(currentStocks);
-                } else {
-                    renderTableView(currentStocks);
-                }
-            }
-
-            // Update API status
-            const apiStatusIndicator = document.getElementById('api-status-indicator');
-            const apiStatusText = document.getElementById('api-status-text');
-            if (apiStatusIndicator && apiStatusText) {
-                apiStatusIndicator.classList.remove('disconnected');
-                apiStatusIndicator.classList.add('connected');
-                apiStatusText.textContent = 'connected';
-            }
-
-            // Hide loading state
-            if (loadingProgressBar && loadingProgressText) {
-                // Complete progress animation
-                const progressInner = loadingProgressBar.querySelector('.progress-inner');
-                if (progressInner) {
-                    progressInner.style.width = '100%';
-                }
-                
-                // Hide loading UI after animation
-                setTimeout(() => {
-                    loadingProgressBar.style.display = 'none';
-                    loadingProgressText.style.display = 'none';
-                }, 300);
-            }
-
-            return processedStocks;
-        })
-        .catch(error => {
-            console.error('Error loading stocks:', error);
-            
-            // Update API status
-            const apiStatusIndicator = document.getElementById('api-status-indicator');
-            const apiStatusText = document.getElementById('api-status-text');
-            if (apiStatusIndicator && apiStatusText) {
-                apiStatusIndicator.classList.remove('connected');
-                apiStatusIndicator.classList.add('disconnected');
-                apiStatusText.textContent = 'disconnected';
-            }
-            
-            // Hide loading state
-            if (loadingProgressBar && loadingProgressText) {
-                loadingProgressBar.style.display = 'none';
-                loadingProgressText.style.display = 'none';
-            }
-            
-            throw error;
-        });
-}
-
-/**
- * Toggle filter
- * @param {HTMLElement} button - Filter button element
- */
-function toggleFilter(button) {
-    console.log("toggleFilter called with button:", button);
-    
-    // Get filter data
-    const filter = button.dataset.filter;
-    const value = button.dataset.value;
-    
-    console.log("Filter:", filter, "Value:", value);
-    
-    // Toggle active state
-    button.classList.toggle('active');
-    const isActive = button.classList.contains('active');
-    
-    // Update active filters
-    if (!window.activeFilters[filter]) {
-        window.activeFilters[filter] = [];
-    }
-    
-    if (isActive) {
-        // Add filter
-        if (!window.activeFilters[filter].includes(value)) {
-            window.activeFilters[filter].push(value);
-        }
-    } else {
-        // Remove filter
-        window.activeFilters[filter] = window.activeFilters[filter].filter(v => v !== value);
-        // Remove empty filter
-        if (window.activeFilters[filter].length === 0) {
-            delete window.activeFilters[filter];
-        }
-    }
-    
-    // Special case for reset button
-    if (button.dataset.action === 'reset-filters') {
-        // Clear all filters
-        document.querySelectorAll('.filter-button, .preset-button').forEach(btn => {
-            if (btn !== button) {
-                btn.classList.remove('active');
-            }
-        });
-        
-        // Reset active filters
-        window.activeFilters = {};
-    }
-    
-    console.log("Updated activeFilters:", window.activeFilters);
-    
-    // Reload data with current filters
-    loadStocksPage(1, 50);
-}
-
-/**
- * Toggle preset
- * @param {HTMLElement} button - Preset button element
- */
-function togglePreset(button) {
-    console.log("togglePreset called with button:", button);
-    
-    // Get preset data
-    const preset = button.dataset.preset;
-    
-    console.log("Preset:", preset);
-    
-    // Toggle active state
-    button.classList.toggle('active');
-    const isActive = button.classList.contains('active');
-    
-    // Update active filters
-    if (isActive) {
-        // Add preset
-        window.activeFilters.preset = preset;
-        
-        // Deactivate other presets
-        document.querySelectorAll('.preset-button').forEach(btn => {
-            if (btn !== button) {
-                btn.classList.remove('active');
-            }
-        });
-    } else {
-        // Remove preset
-        delete window.activeFilters.preset;
-    }
-    
-    console.log("Updated activeFilters:", window.activeFilters);
-    
-    // Reload data with current filters
-    loadStocksPage(1, 50);
-}
-
-/**
- * Format currency value
- * @param {Number} value - Value to format
- * @returns {String} Formatted currency
- */
-function formatCurrency(value) {
-    if (value === undefined || value === null) return 'N/A';
-    
-    return new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        minimumFractionDigits: 2,
-        maximumFractionDigits: 2
-    }).format(value);
-}
-
-/**
- * Format large number with suffix (K, M, B, T)
- * @param {Number} value - Value to format
- * @returns {String} Formatted number
- */
-function formatLargeNumber(value) {
-    if (value === undefined || value === null) return 'N/A';
-    
-    if (value >= 1e12) {
-        return '$' + (value / 1e12).toFixed(2) + 'T';
-    } else if (value >= 1e9) {
-        return '$' + (value / 1e9).toFixed(2) + 'B';
-    } else if (value >= 1e6) {
-        return '$' + (value / 1e6).toFixed(2) + 'M';
-    } else if (value >= 1e3) {
-        return '$' + (value / 1e3).toFixed(2) + 'K';
-    } else {
-        return '$' + value.toFixed(2);
-    }
-}
