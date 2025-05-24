@@ -6,6 +6,7 @@
  * - Adaptive card heights for mobile
  * - Optimized data loading
  * - Responsive design for all devices
+ * - Fixed filter functionality with proper parameter mapping
  */
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
@@ -135,14 +136,15 @@ document.addEventListener('DOMContentLoaded', function() {
             pageSize: pageSize
         });
         
-        // Add filter parameters
-        Object.entries(activeFilters).forEach(([key, value]) => {
-            if (Array.isArray(value)) {
-                value.forEach(v => params.append(key, v));
-            } else if (value) {
-                params.append(key, value);
-            }
+        // Convert active filters to backend parameters
+        const filterParams = convertFiltersToBackendParams(activeFilters);
+        
+        // Append filter parameters to the main params
+        filterParams.forEach((value, key) => {
+            params.append(key, value);
         });
+        
+        console.log('Sending API request with params:', params.toString());
         
         // Fetch stocks from API
         return fetch(`/api/stocks?${params.toString()}`)
@@ -604,6 +606,9 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Reset to first page and apply filters
         pagination.goToPage(1);
+        
+        // Explicitly reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -637,8 +642,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        console.log('Active filters after toggle:', activeFilters);
+        
         // Reset to first page and apply filters
         pagination.goToPage(1);
+        
+        // Explicitly reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -671,8 +681,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        console.log('Active presets after toggle:', activeFilters.preset);
+        
         // Reset to first page and apply filters
         pagination.goToPage(1);
+        
+        // Explicitly reload data with current filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -741,5 +756,176 @@ document.addEventListener('DOMContentLoaded', function() {
             clearTimeout(timeout);
             timeout = setTimeout(() => func.apply(this, args), wait);
         };
+    }
+    
+    /**
+     * Convert frontend filter values to backend API parameters
+     * @param {Object} activeFilters - Object containing active filters
+     * @returns {URLSearchParams} Converted parameters for backend API
+     */
+    function convertFiltersToBackendParams(activeFilters) {
+        const params = new URLSearchParams();
+        
+        // Process each filter type
+        Object.entries(activeFilters).forEach(([key, value]) => {
+            switch (key) {
+                case 'market_cap':
+                    processMarketCapFilters(value, params);
+                    break;
+                case 'volume':
+                    processVolumeFilters(value, params);
+                    break;
+                case 'debt':
+                    processDebtFilters(value, params);
+                    break;
+                case 'valuation':
+                    processValuationFilters(value, params);
+                    break;
+                case 'preset':
+                    // Presets are handled directly by the backend
+                    if (Array.isArray(value)) {
+                        value.forEach(v => params.append('preset', v));
+                    } else {
+                        params.append('preset', value);
+                    }
+                    break;
+                case 'search':
+                    // Search is passed directly
+                    params.append('search', value);
+                    break;
+                default:
+                    // For any other filters, pass them through as-is
+                    if (Array.isArray(value)) {
+                        value.forEach(v => params.append(key, v));
+                    } else {
+                        params.append(key, value);
+                    }
+            }
+        });
+        
+        return params;
+    }
+    
+    /**
+     * Process market cap filters
+     * @param {Array|String} values - Market cap filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
+     */
+    function processMarketCapFilters(values, params) {
+        if (!Array.isArray(values)) {
+            values = [values];
+        }
+        
+        values.forEach(value => {
+            switch (value) {
+                case 'large':
+                    // Large cap: $10B+
+                    params.append('marketCapMin', 10000000000);
+                    break;
+                case 'mid':
+                    // Mid cap: $2B-$10B
+                    params.append('marketCapMin', 2000000000);
+                    params.append('marketCapMax', 10000000000);
+                    break;
+                case 'small':
+                    // Small cap: $300M-$2B
+                    params.append('marketCapMin', 300000000);
+                    params.append('marketCapMax', 2000000000);
+                    break;
+                case 'micro':
+                    // Micro cap: <$300M
+                    params.append('marketCapMax', 300000000);
+                    break;
+            }
+        });
+    }
+    
+    /**
+     * Process volume filters
+     * @param {Array|String} values - Volume filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
+     */
+    function processVolumeFilters(values, params) {
+        if (!Array.isArray(values)) {
+            values = [values];
+        }
+        
+        values.forEach(value => {
+            switch (value) {
+                case 'high':
+                    // High volume: >$5M
+                    params.append('avgVolumeMin', 5000000);
+                    break;
+                case 'medium':
+                    // Medium volume: $1M-$5M
+                    params.append('avgVolumeMin', 1000000);
+                    params.append('avgVolumeMax', 5000000);
+                    break;
+                case 'low':
+                    // Low volume: <$1M
+                    params.append('avgVolumeMax', 1000000);
+                    break;
+            }
+        });
+    }
+    
+    /**
+     * Process debt filters
+     * @param {Array|String} values - Debt filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
+     */
+    function processDebtFilters(values, params) {
+        if (!Array.isArray(values)) {
+            values = [values];
+        }
+        
+        values.forEach(value => {
+            switch (value) {
+                case 'low':
+                    // Low debt: <0.5x
+                    params.append('debtMin', 0);
+                    params.append('debtMax', 0.5);
+                    break;
+                case 'medium':
+                    // Medium debt: 0.5x-1.5x
+                    params.append('debtMin', 0.5);
+                    params.append('debtMax', 1.5);
+                    break;
+                case 'high':
+                    // High debt: >1.5x
+                    params.append('debtMin', 1.5);
+                    break;
+            }
+        });
+    }
+    
+    /**
+     * Process valuation filters
+     * @param {Array|String} values - Valuation filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
+     */
+    function processValuationFilters(values, params) {
+        if (!Array.isArray(values)) {
+            values = [values];
+        }
+        
+        values.forEach(value => {
+            switch (value) {
+                case 'undervalued':
+                    // Undervalued: P/E < 15
+                    params.append('peMin', 0); // Exclude negative P/E
+                    params.append('peMax', 15);
+                    break;
+                case 'fair':
+                    // Fair value: P/E 15-25
+                    params.append('peMin', 15);
+                    params.append('peMax', 25);
+                    break;
+                case 'overvalued':
+                    // Overvalued: P/E > 25
+                    params.append('peMin', 25);
+                    break;
+            }
+        });
     }
 });
