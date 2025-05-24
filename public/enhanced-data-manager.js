@@ -77,18 +77,54 @@ class EnhancedDataManager {
                 filters.marketCap.forEach(cap => {
                     switch (cap) {
                         case 'large':
-                            queryParams.append('minMarketCap', '10000000000');
+                            queryParams.append('marketCapMin', '10000000000');
                             break;
                         case 'mid':
-                            queryParams.append('minMarketCap', '2000000000');
-                            queryParams.append('maxMarketCap', '10000000000');
+                            queryParams.append('marketCapMin', '2000000000');
+                            queryParams.append('marketCapMax', '10000000000');
                             break;
                         case 'small':
-                            queryParams.append('minMarketCap', '300000000');
-                            queryParams.append('maxMarketCap', '2000000000');
+                            queryParams.append('marketCapMin', '300000000');
+                            queryParams.append('marketCapMax', '2000000000');
                             break;
                         case 'micro':
-                            queryParams.append('maxMarketCap', '300000000');
+                            queryParams.append('marketCapMax', '300000000');
+                            break;
+                    }
+                });
+            }
+            
+            // Add volume filters with correct parameter names
+            if (filters.volume && filters.volume.length) {
+                filters.volume.forEach(vol => {
+                    switch (vol) {
+                        case 'high':
+                            queryParams.append('avgDollarVolumeMin', '5000000'); // >5M
+                            break;
+                        case 'medium':
+                            queryParams.append('avgDollarVolumeMin', '1000000'); // >1M
+                            queryParams.append('avgDollarVolumeMax', '5000000'); // <5M
+                            break;
+                        case 'low':
+                            queryParams.append('avgDollarVolumeMax', '1000000'); // <1M
+                            break;
+                    }
+                });
+            }
+            
+            // Add debt filters with correct parameter names
+            if (filters.debt && filters.debt.length) {
+                filters.debt.forEach(debt => {
+                    switch (debt) {
+                        case 'low':
+                            queryParams.append('debtMax', '0.5'); // <0.5
+                            break;
+                        case 'medium':
+                            queryParams.append('debtMin', '0.5'); // >0.5
+                            queryParams.append('debtMax', '1.5'); // <1.5
+                            break;
+                        case 'high':
+                            queryParams.append('debtMin', '1.5'); // >1.5
                             break;
                     }
                 });
@@ -99,14 +135,14 @@ class EnhancedDataManager {
                 filters.valuation.forEach(val => {
                     switch (val) {
                         case 'undervalued':
-                            queryParams.append('maxPE', '15');
+                            queryParams.append('peMax', '15');
                             break;
                         case 'fair':
-                            queryParams.append('minPE', '15');
-                            queryParams.append('maxPE', '25');
+                            queryParams.append('peMin', '15');
+                            queryParams.append('peMax', '25');
                             break;
                         case 'overvalued':
-                            queryParams.append('minPE', '25');
+                            queryParams.append('peMin', '25');
                             break;
                     }
                 });
