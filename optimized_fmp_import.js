@@ -1,34 +1,46 @@
 /**
- * Optimized FMP API Import Strategy
- * Designed to maximize throughput with 750 calls/minute quota
+ * Heroku-Optimized FMP API Import Strategy
+ * Designed for Heroku deployment with memory and timeout constraints
  * 
  * Features:
- * - Dynamic concurrency adjustment based on rate limits
- * - Intelligent batching and prioritization
+ * - Heroku-friendly concurrency settings
+ * - Timeout handling for 30-minute dyno limit
+ * - Memory-efficient processing
  * - Custom Debt/EBITDA calculation integration
  * - Comprehensive error handling and retry logic
  */
 
 const axios = require('axios');
+const mongoose = require('mongoose');
+require('dotenv').config();
+
+// Import custom Debt/EBITDA calculator
+// Make sure to upload this file to your Heroku app
 const debtEBITDACalculator = require('./custom_debt_ebitda_calculator');
 
 // API configuration
-const API_KEY = process.env.FMP_API_KEY || 'your_api_key_here';
+const API_KEY = process.env.FMP_API_KEY;
 const BASE_URL = 'https://financialmodelingprep.com/api/v3';
 
-// Optimized rate limiting configuration for 750 calls/minute
+// MongoDB connection
+const MONGODB_URI = process.env.MONGODB_URI;
+
+// Import timeout (Heroku has 30 min limit)
+const IMPORT_TIMEOUT = 25 * 60 * 1000; // 25 minutes
+
+// Heroku-optimized rate limiting configuration
 const RATE_CONFIG = {
-  initialConcurrency: 25,       // Start with higher concurrency (up from 5-15)
-  minConcurrency: 5,            // Minimum concurrency (up from 1)
-  maxConcurrency: 60,           // Maximum concurrency (up from 15) - allows ~720 calls/minute
-  concurrencyStep: 5,           // Larger steps for faster adaptation (up from 1)
-  initialBackoff: 200,          // Reduced initial backoff (down from 300ms)
-  maxBackoff: 3000,             // Reduced max backoff (down from 5000ms)
-  backoffFactor: 1.5,           // Same exponential backoff factor
-  successThreshold: 50,         // Higher threshold for increasing concurrency (up from 20)
-  rateLimitThreshold: 3,        // Lower threshold for decreasing concurrency (down from 5)
+  initialConcurrency: 15,       // Lower for Heroku (down from 25)
+  minConcurrency: 5,            // Minimum concurrency
+  maxConcurrency: 30,           // Lower for Heroku (down from 60)
+  concurrencyStep: 3,           // Smaller steps for stability (down from 5)
+  initialBackoff: 200,          // Initial backoff in ms
+  maxBackoff: 3000,             // Maximum backoff in ms
+  backoffFactor: 1.5,           // Exponential backoff factor
+  successThreshold: 30,         // Threshold for increasing concurrency (down from 50)
+  rateLimitThreshold: 2,        // Threshold for decreasing concurrency (down from 3)
   adaptiveWindow: 60000,        // Time window for rate limit adaptation (1 minute)
-  requestSpacing: 0,            // No minimum spacing between requests (down from 100ms)
+  requestSpacing: 0,            // No minimum spacing between requests
   
   // Endpoint-specific rate limits
   endpointLimits: {
@@ -70,6 +82,18 @@ let totalRequests = 0;
 let successfulRequests = 0;
 let failedRequests = 0;
 let rateLimitedRequests = 0;
+
+// Import status tracking
+let importStatus = {
+  status: 'idle',
+  startTime: null,
+  endTime: null,
+  progress: {
+    total: 0,
+    completed: 0,
+    failed: 0
+  }
+};
 
 /**
  * Get rate limit configuration for a specific endpoint
@@ -307,8 +331,41 @@ function processStockData(stockInfo, profile, quote, ratios, financials) {
  * @returns {Number} Score from 0-100
  */
 function calculateScore(stock) {
-  // Implement your scoring logic here
-  return 50; // Placeholder
+  let score = 0;
+  
+  // Market cap score (0-20)
+  const marketCap = stock.marketCap || 0;
+  if (marketCap > 10000000000) score += 20; // $10B+
+  else if (marketCap > 2000000000) score += 15; // $2B+
+  else if (marketCap > 300000000) score += 10; // $300M+
+  else score += 5;
+  
+  // Debt score (0-20)
+  const debtToEBITDA = stock.netDebtToEBITDA || 0;
+  if (debtToEBITDA < 1) score += 20;
+  else if (debtToEBITDA < 2) score += 15;
+  else if (debtToEBITDA < 3) score += 10;
+  else score += 5;
+  
+  // Valuation score (0-20)
+  const peRatio = stock.peRatio || 0;
+  if (peRatio > 0 && peRatio < 15) score += 20;
+  else if (peRatio > 0 && peRatio < 25) score += 15;
+  else if (peRatio > 0 && peRatio < 35) score += 10;
+  else score += 5;
+  
+  // Profitability score (0-20)
+  const rotce = stock.rotce || 0;
+  if (rotce > 0.2) score += 20;
+  else if (rotce > 0.15) score += 15;
+  else if (rotce > 0.1) score += 10;
+  else score += 5;
+  
+  // Add random factor (0-20) for demonstration
+  score += Math.floor(Math.random() * 20);
+  
+  // Cap at 100
+  return Math.min(score, 100);
 }
 
 /**
@@ -351,12 +408,29 @@ async function importAllStocksOptimized(stocks, saveCallback, progressCallback) 
   try {
     console.log(`Starting optimized import of ${stocks.length} stocks with concurrency ${currentConcurrency}`);
     
+    // Update import status
+    importStatus = {
+      status: 'running',
+      startTime: new Date(),
+      progress: {
+        total: stocks.length,
+        completed: 0,
+        failed: 0
+      }
+    };
+    
     // Process stocks in batches with adaptive concurrency
     let completed = 0;
     let failed = 0;
     
     // Process in batches
     for (let i = 0; i < stocks.length; i += currentConcurrency) {
+      // Check if we're approaching timeout
+      if (Date.now() - importStatus.startTime > IMPORT_TIMEOUT) {
+        console.log('Import timeout approaching, stopping gracefully');
+        break;
+      }
+      
       const batch = stocks.slice(i, i + currentConcurrency);
       
       // Process batch concurrently
@@ -378,15 +452,17 @@ async function importAllStocksOptimized(stocks, saveCallback, progressCallback) 
         await saveCallback(successfulStocks);
       }
       
+      // Update progress
+      importStatus.progress = {
+        total: stocks.length,
+        completed,
+        failed,
+        remaining: stocks.length - (completed + failed)
+      };
+      
       // Report progress
       if (progressCallback) {
-        progressCallback({
-          total: stocks.length,
-          completed,
-          failed,
-          remaining: stocks.length - (completed + failed),
-          currentConcurrency
-        });
+        progressCallback(importStatus.progress);
       }
       
       // Log progress
@@ -399,6 +475,19 @@ async function importAllStocksOptimized(stocks, saveCallback, progressCallback) 
       }
     }
     
+    // Update import status
+    importStatus = {
+      status: 'completed',
+      startTime: importStatus.startTime,
+      endTime: new Date(),
+      progress: {
+        total: stocks.length,
+        completed,
+        failed,
+        remaining: stocks.length - (completed + failed)
+      }
+    };
+    
     console.log('Import completed successfully');
     console.log(`Imported ${completed} stocks, ${failed} failed`);
     
@@ -409,6 +498,149 @@ async function importAllStocksOptimized(stocks, saveCallback, progressCallback) 
     };
   } catch (error) {
     console.error(`[API] importAllStocksOptimized: ${error.message}`);
+    
+    // Update import status
+    importStatus = {
+      status: 'error',
+      startTime: importStatus.startTime,
+      endTime: new Date(),
+      error: error.message,
+      progress: importStatus.progress
+    };
+    
+    throw error;
+  }
+}
+
+/**
+ * Get all stock symbols from FMP API
+ * @param {Number} limit - Optional limit on number of stocks to return
+ * @returns {Promise<Array>} Promise resolving to array of stock symbols
+ */
+async function getAllStockSymbols(limit = 0) {
+  try {
+    console.log('Getting all stock symbols...');
+    
+    // Get all stock symbols from FMP API
+    const stockList = await makeApiRequest('/stock/list');
+    
+    if (!stockList || !Array.isArray(stockList)) {
+      throw new Error('Invalid response from FMP API');
+    }
+    
+    // Filter to only include common stocks (exclude ETFs, etc.)
+    const commonStocks = stockList.filter(stock => 
+      stock.type === 'stock' && 
+      (stock.exchangeShortName === 'NYSE' || stock.exchangeShortName === 'NASDAQ')
+    );
+    
+    console.log(`Found ${commonStocks.length} common stocks on NYSE and NASDAQ`);
+    
+    // Apply limit if specified
+    const limitedStocks = limit > 0 ? commonStocks.slice(0, limit) : commonStocks;
+    
+    return limitedStocks.map(stock => ({
+      symbol: stock.symbol,
+      name: stock.name,
+      exchange: stock.exchangeShortName
+    }));
+  } catch (error) {
+    console.error(`[API] getAllStockSymbols: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Save stocks to database
+ * @param {Array} stocks - Array of stock objects to save
+ * @returns {Promise} Promise resolving when save is complete
+ */
+async function saveStocksToDatabase(stocks) {
+  try {
+    // Get Stock model
+    const Stock = mongoose.model('Stock');
+    
+    // Save each stock
+    for (const stock of stocks) {
+      await Stock.findOneAndUpdate(
+        { symbol: stock.symbol },
+        stock,
+        { upsert: true, new: true }
+      );
+    }
+    
+    return true;
+  } catch (error) {
+    console.error(`Error saving stocks to database: ${error.message}`);
+    return false;
+  }
+}
+
+/**
+ * Main function to run the import process
+ * @param {Object} options - Import options
+ * @returns {Promise} Promise resolving when import is complete
+ */
+async function runImport(options = {}) {
+  // Set default options
+  const opts = {
+    limit: options.limit || 0,
+    connectToMongoDB: options.connectToMongoDB !== false,
+    disconnectAfterImport: options.disconnectAfterImport !== false,
+    timeout: options.timeout || IMPORT_TIMEOUT
+  };
+  
+  // Set timeout
+  const timeoutId = setTimeout(() => {
+    console.log('Import timeout reached');
+    if (opts.disconnectAfterImport) {
+      mongoose.disconnect();
+    }
+    process.exit(0);
+  }, opts.timeout);
+  
+  try {
+    // Connect to MongoDB if needed
+    if (opts.connectToMongoDB) {
+      console.log('Connecting to MongoDB...');
+      await mongoose.connect(MONGODB_URI);
+      console.log('Connected to MongoDB');
+    }
+    
+    // Get stock symbols
+    const stocks = await getAllStockSymbols(opts.limit);
+    
+    // Run the import
+    const result = await importAllStocksOptimized(
+      stocks,
+      saveStocksToDatabase,
+      progress => console.log(`Imported ${progress.completed}/${progress.total} stocks`)
+    );
+    
+    console.log('Import completed:', result);
+    
+    // Disconnect from MongoDB if needed
+    if (opts.disconnectAfterImport) {
+      await mongoose.disconnect();
+      console.log('Disconnected from MongoDB');
+    }
+    
+    // Clear timeout
+    clearTimeout(timeoutId);
+    
+    return result;
+  } catch (error) {
+    console.error('Error running import:', error);
+    
+    // Disconnect from MongoDB if needed
+    if (opts.connectToMongoDB && opts.disconnectAfterImport) {
+      await mongoose.disconnect();
+      console.log('Disconnected from MongoDB');
+    }
+    
+    // Clear timeout
+    clearTimeout(timeoutId);
+    
     throw error;
   }
 }
@@ -419,5 +651,28 @@ module.exports = {
   importStock,
   importAllStocksOptimized,
   processStockData,
+  getAllStockSymbols,
+  saveStocksToDatabase,
+  runImport,
   RATE_CONFIG
 };
+
+// Run import if called directly
+if (require.main === module) {
+  console.log('Starting Heroku-optimized FMP import process...');
+  
+  // Parse command line arguments
+  const args = process.argv.slice(2);
+  const limit = args.length > 0 ? parseInt(args[0], 10) : 0;
+  
+  // Run import
+  runImport({ limit })
+    .then(result => {
+      console.log('Import completed successfully:', result);
+      process.exit(0);
+    })
+    .catch(error => {
+      console.error('Import failed:', error);
+      process.exit(1);
+    });
+}
