@@ -1,10 +1,11 @@
 /**
  * PaginatedStockApp - Stock screener application with pagination and adaptive card view
+ * OPTIMIZED VERSION with performance improvements
  * 
  * Features:
  * - Classic pagination with modern UX
  * - Adaptive card heights for mobile
- * - Optimized data loading
+ * - Optimized data loading with caching and debouncing
  * - Responsive design for all devices
  * - Fixed filter functionality with proper parameter mapping
  */
@@ -31,6 +32,11 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentStocks = [];
     let totalItems = 0;
     let isLoading = false;
+    
+    // OPTIMIZATION: Add results cache for identical filter combinations
+    const resultsCache = new Map();
+    const CACHE_SIZE_LIMIT = 20; // Maximum number of cached results
+    const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
     
     // Initialize pagination controls
     const pagination = new PaginationControls({
@@ -72,17 +78,27 @@ document.addEventListener('DOMContentLoaded', function() {
         cardViewButton.addEventListener('click', () => switchView('card'));
         tableViewButton.addEventListener('click', () => switchView('table'));
         
-        // Search input
-        searchInput.addEventListener('input', debounce(handleSearch, 300));
+        // OPTIMIZATION: Use longer debounce for search to reduce API calls
+        searchInput.addEventListener('input', debounce(handleSearch, 500));
         
         // Filter buttons
         document.querySelectorAll('.filter-button').forEach(button => {
-            button.addEventListener('click', () => toggleFilter(button));
+            // OPTIMIZATION: Use debounce for filter changes
+            button.addEventListener('click', () => {
+                toggleFilter(button);
+                // Show loading indicator immediately for better UX
+                setLoading(true);
+            });
         });
         
         // Preset buttons
         document.querySelectorAll('.preset-button').forEach(button => {
-            button.addEventListener('click', () => togglePreset(button));
+            // OPTIMIZATION: Use debounce for preset changes
+            button.addEventListener('click', () => {
+                togglePreset(button);
+                // Show loading indicator immediately for better UX
+                setLoading(true);
+            });
         });
         
         // Window resize
@@ -105,24 +121,58 @@ document.addEventListener('DOMContentLoaded', function() {
         pagination.currentPage = page;
         pagination.pageSize = pageSize;
         
-        // Load stats
-        fetch('/api/stats')
-            .then(response => response.json())
-            .then(stats => {
+        // OPTIMIZATION: Load stats and first page in parallel
+        Promise.all([
+            fetch('/api/stats').then(response => response.json()),
+            loadStocksPageWithCache(page, pageSize)
+        ])
+            .then(([stats]) => {
                 updateStats(stats);
-                
-                // Load first page of stocks
-                return loadStocksPage(page, pageSize);
             })
             .catch(error => {
-                console.error('Error loading stats:', error);
+                console.error('Error loading initial data:', error);
                 updateApiStatus(false);
                 setLoading(false);
             });
     }
     
     /**
-     * Load a specific page of stocks
+     * Load a specific page of stocks with caching
+     * @param {Number} page - Page number
+     * @param {Number} pageSize - Items per page
+     * @returns {Promise} Promise that resolves with loaded stocks
+     */
+    function loadStocksPageWithCache(page, pageSize) {
+        // Generate cache key from current filters and pagination
+        const cacheKey = generateCacheKey(page, pageSize, activeFilters);
+        
+        // Check cache for existing results
+        const cachedResult = checkCache(cacheKey);
+        if (cachedResult) {
+            console.log('Cache hit for query:', cacheKey);
+            // Process cached results
+            currentStocks = cachedResult.stocks;
+            totalItems = cachedResult.pagination.total;
+            
+            // Update pagination
+            pagination.update(totalItems, page);
+            
+            // Render stocks
+            renderStocks(currentStocks);
+            
+            // Update API status
+            updateApiStatus(true);
+            
+            setLoading(false);
+            return Promise.resolve(cachedResult);
+        }
+        
+        console.log('Cache miss, fetching from API:', cacheKey);
+        return loadStocksPage(page, pageSize);
+    }
+    
+    /**
+     * Load a specific page of stocks from API
      * @param {Number} page - Page number
      * @param {Number} pageSize - Items per page
      * @returns {Promise} Promise that resolves with loaded stocks
@@ -175,8 +225,12 @@ document.addEventListener('DOMContentLoaded', function() {
                 // Update API status
                 updateApiStatus(true);
                 
+                // OPTIMIZATION: Cache the results
+                const cacheKey = generateCacheKey(page, pageSize, activeFilters);
+                cacheResults(cacheKey, data);
+                
                 setLoading(false);
-                return processedStocks;
+                return data;
             })
             .catch(error => {
                 console.error('Error loading stocks:', error);
@@ -248,12 +302,18 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
+        // OPTIMIZATION: Use document fragment for better performance
+        const fragment = document.createDocumentFragment();
+        
         // Render each stock card
         stocks.forEach(stock => {
             const cardElement = document.createElement('div');
             renderStockCard(stock, cardElement);
-            stockCardsContainer.appendChild(cardElement);
+            fragment.appendChild(cardElement);
         });
+        
+        // Append all cards at once
+        stockCardsContainer.appendChild(fragment);
     }
     
     /**
@@ -316,6 +376,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Create table body
         const tbody = document.createElement('tbody');
         
+        // OPTIMIZATION: Use document fragment for better performance
+        const fragment = document.createDocumentFragment();
+        
         // Create rows
         stocks.forEach(stock => {
             const row = document.createElement('tr');
@@ -349,9 +412,11 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.appendChild(cell);
             });
             
-            tbody.appendChild(row);
+            fragment.appendChild(row);
         });
         
+        // Append all rows at once
+        tbody.appendChild(fragment);
         table.appendChild(tbody);
         stockTableContainer.appendChild(table);
     }
@@ -418,6 +483,9 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderCardSkeletons() {
         const pageSize = pagination.pageSize;
         
+        // OPTIMIZATION: Use document fragment for better performance
+        const fragment = document.createDocumentFragment();
+        
         for (let i = 0; i < Math.min(pageSize, 12); i++) {
             const skeleton = document.createElement('div');
             skeleton.className = 'stock-card skeleton';
@@ -436,8 +504,10 @@ document.addEventListener('DOMContentLoaded', function() {
                     <div class="skeleton-metric"></div>
                 </div>
             `;
-            stockCardsContainer.appendChild(skeleton);
+            fragment.appendChild(skeleton);
         }
+        
+        stockCardsContainer.appendChild(fragment);
     }
     
     /**
@@ -466,6 +536,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Create table body
         const tbody = document.createElement('tbody');
         
+        // OPTIMIZATION: Use document fragment for better performance
+        const fragment = document.createDocumentFragment();
+        
         // Create rows
         for (let i = 0; i < Math.min(pageSize, 20); i++) {
             const row = document.createElement('tr');
@@ -477,9 +550,10 @@ document.addEventListener('DOMContentLoaded', function() {
                 row.appendChild(cell);
             }
             
-            tbody.appendChild(row);
+            fragment.appendChild(row);
         }
         
+        tbody.appendChild(fragment);
         table.appendChild(tbody);
         stockTableContainer.appendChild(table);
     }
@@ -508,7 +582,8 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Number} pageSize - Items per page
      */
     function handlePageChange(page, pageSize) {
-        loadStocksPage(page, pageSize);
+        // OPTIMIZATION: Use cached version when available
+        loadStocksPageWithCache(page, pageSize);
     }
     
     /**
@@ -607,8 +682,8 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // Explicitly reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
+        // OPTIMIZATION: Use cached version when available
+        loadStocksPageWithCache(1, pagination.pageSize);
     }
     
     /**
@@ -647,8 +722,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // Explicitly reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
+        // OPTIMIZATION: Use cached version when available
+        // Use debounced version to prevent multiple API calls when toggling multiple filters
+        debouncedLoadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -686,8 +762,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // Explicitly reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
+        // OPTIMIZATION: Use cached version when available
+        // Use debounced version to prevent multiple API calls when toggling multiple presets
+        debouncedLoadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -757,6 +834,11 @@ document.addEventListener('DOMContentLoaded', function() {
             timeout = setTimeout(() => func.apply(this, args), wait);
         };
     }
+    
+    // OPTIMIZATION: Create debounced version of loadStocksPage
+    const debouncedLoadStocksPage = debounce((page, pageSize) => {
+        loadStocksPageWithCache(page, pageSize);
+    }, 300);
     
     /**
      * Convert frontend filter values to backend API parameters
@@ -926,6 +1008,62 @@ document.addEventListener('DOMContentLoaded', function() {
                     params.append('peMin', 25);
                     break;
             }
+        });
+    }
+    
+    /**
+     * OPTIMIZATION: Generate cache key from filters and pagination
+     * @param {Number} page - Page number
+     * @param {Number} pageSize - Items per page
+     * @param {Object} filters - Active filters
+     * @returns {String} Cache key
+     */
+    function generateCacheKey(page, pageSize, filters) {
+        return JSON.stringify({
+            page,
+            pageSize,
+            filters
+        });
+    }
+    
+    /**
+     * OPTIMIZATION: Check cache for results
+     * @param {String} cacheKey - Cache key
+     * @returns {Object|null} Cached result or null
+     */
+    function checkCache(cacheKey) {
+        if (!resultsCache.has(cacheKey)) {
+            return null;
+        }
+        
+        const { timestamp, data } = resultsCache.get(cacheKey);
+        const now = Date.now();
+        
+        // Check if cache is expired
+        if (now - timestamp > CACHE_DURATION) {
+            resultsCache.delete(cacheKey);
+            return null;
+        }
+        
+        return data;
+    }
+    
+    /**
+     * OPTIMIZATION: Cache results
+     * @param {String} cacheKey - Cache key
+     * @param {Object} data - Data to cache
+     */
+    function cacheResults(cacheKey, data) {
+        // Limit cache size
+        if (resultsCache.size >= CACHE_SIZE_LIMIT) {
+            // Remove oldest entry
+            const oldestKey = Array.from(resultsCache.keys())[0];
+            resultsCache.delete(oldestKey);
+        }
+        
+        resultsCache.set(cacheKey, {
+            timestamp: Date.now(),
+            data
         });
     }
 });
