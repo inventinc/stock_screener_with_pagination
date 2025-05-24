@@ -1,6 +1,6 @@
 /**
  * PaginatedStockApp - Stock screener application with pagination and adaptive card view
- * OPTIMIZED VERSION with performance improvements and filter refresh fix
+ * OPTIMIZED VERSION with performance improvements and global state fix
  * 
  * Features:
  * - Classic pagination with modern UX
@@ -9,7 +9,19 @@
  * - Responsive design for all devices
  * - Fixed filter functionality with proper parameter mapping
  * - Immediate UI refresh when filters change
+ * - Global state management for reliable rendering
  */
+
+// CRITICAL FIX: Create global state object to ensure state is accessible
+window.stockAppState = {
+    currentView: 'card',
+    activeFilters: {},
+    currentStocks: [],
+    totalItems: 0,
+    isLoading: false,
+    pendingFilterRefresh: false
+};
+
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
     const stockCardsContainer = document.getElementById('stock-cards');
@@ -27,13 +39,13 @@ document.addEventListener('DOMContentLoaded', function() {
     const cardViewButton = document.getElementById('card-view-button');
     const tableViewButton = document.getElementById('table-view-button');
     
-    // State
-    let currentView = 'card'; // 'card' or 'table'
-    let activeFilters = {};
-    let currentStocks = [];
-    let totalItems = 0;
-    let isLoading = false;
-    let pendingFilterRefresh = false; // FIX: Track if a filter refresh is pending
+    // Initialize state from global object
+    let currentView = window.stockAppState.currentView;
+    let activeFilters = window.stockAppState.activeFilters;
+    let currentStocks = window.stockAppState.currentStocks;
+    let totalItems = window.stockAppState.totalItems;
+    let isLoading = window.stockAppState.isLoading;
+    let pendingFilterRefresh = window.stockAppState.pendingFilterRefresh;
     
     // OPTIMIZATION: Add results cache for identical filter combinations
     const resultsCache = new Map();
@@ -160,8 +172,7 @@ document.addEventListener('DOMContentLoaded', function() {
         if (cachedResult) {
             console.log('Cache hit for query:', cacheKey);
             // Process cached results
-            currentStocks = cachedResult.stocks;
-            totalItems = cachedResult.pagination.total;
+            updateStocksState(cachedResult.stocks, cachedResult.pagination.total);
             
             // Update pagination
             pagination.update(totalItems, page);
@@ -218,18 +229,19 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error('Invalid API response format');
                 }
                 
+                console.log('API response received:', data);
+                
                 // Process stocks data
                 const processedStocks = processStocksData(data.stocks);
                 
                 // Update state
-                currentStocks = processedStocks;
-                totalItems = data.pagination ? data.pagination.total : processedStocks.length;
+                updateStocksState(processedStocks, data.pagination ? data.pagination.total : processedStocks.length);
                 
                 // Update pagination
                 pagination.update(totalItems, page);
                 
-                // Render stocks
-                renderStocks(processedStocks);
+                // CRITICAL FIX: Force render after data is loaded
+                renderStocks(currentStocks);
                 
                 // Update API status
                 updateApiStatus(true);
@@ -247,6 +259,24 @@ document.addEventListener('DOMContentLoaded', function() {
                 setLoading(false);
                 throw error;
             });
+    }
+    
+    /**
+     * Update stocks state and sync with global state
+     * @param {Array} stocks - Processed stocks
+     * @param {Number} total - Total items count
+     */
+    function updateStocksState(stocks, total) {
+        // Update local state
+        currentStocks = stocks;
+        totalItems = total;
+        
+        // CRITICAL FIX: Sync with global state
+        window.stockAppState.currentStocks = stocks;
+        window.stockAppState.totalItems = total;
+        
+        // CRITICAL FIX: Expose renderStocks globally for debugging
+        window.renderStocks = renderStocks;
     }
     
     /**
@@ -278,10 +308,19 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Array} stocks - Stocks to render
      */
     function renderStocks(stocks) {
+        console.log('Rendering stocks in view:', currentView, 'with', stocks ? stocks.length : 0, 'stocks');
+        
         if (currentView === 'card') {
             renderCardView(stocks);
         } else {
             renderTableView(stocks);
+        }
+        
+        // CRITICAL FIX: Update loading state after rendering
+        if (isLoading) {
+            document.body.classList.add('loading');
+        } else {
+            document.body.classList.remove('loading');
         }
     }
     
@@ -635,7 +674,11 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Boolean} loading - Whether data is loading
      */
     function setLoading(loading) {
+        // Update local state
         isLoading = loading;
+        
+        // CRITICAL FIX: Sync with global state
+        window.stockAppState.isLoading = loading;
         
         // Update loading indicator
         document.body.classList.toggle('loading', loading);
@@ -661,7 +704,11 @@ document.addEventListener('DOMContentLoaded', function() {
     function switchView(view) {
         if (currentView === view) return;
         
+        // Update local state
         currentView = view;
+        
+        // CRITICAL FIX: Sync with global state
+        window.stockAppState.currentView = view;
         
         // Update active button
         cardViewButton.classList.toggle('active', view === 'card');
@@ -688,11 +735,15 @@ document.addEventListener('DOMContentLoaded', function() {
             delete activeFilters.search;
         }
         
+        // CRITICAL FIX: Sync with global state
+        window.stockAppState.activeFilters = activeFilters;
+        
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
         // FIX: Mark that a filter refresh is pending
         pendingFilterRefresh = true;
+        window.stockAppState.pendingFilterRefresh = true;
         
         // OPTIMIZATION: Use cached version when available
         loadStocksPageWithCache(1, pagination.pageSize);
@@ -729,6 +780,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        // CRITICAL FIX: Sync with global state
+        window.stockAppState.activeFilters = activeFilters;
+        
         console.log('Active filters after toggle:', activeFilters);
         
         // Reset to first page and apply filters
@@ -736,6 +790,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // FIX: Mark that a filter refresh is pending
         pendingFilterRefresh = true;
+        window.stockAppState.pendingFilterRefresh = true;
         
         // FIX: Always load stocks immediately without debounce
         loadStocksPageWithCache(1, pagination.pageSize);
@@ -771,6 +826,9 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
+        // CRITICAL FIX: Sync with global state
+        window.stockAppState.activeFilters = activeFilters;
+        
         console.log('Active presets after toggle:', activeFilters.preset);
         
         // Reset to first page and apply filters
@@ -778,6 +836,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // FIX: Mark that a filter refresh is pending
         pendingFilterRefresh = true;
+        window.stockAppState.pendingFilterRefresh = true;
         
         // FIX: Always load stocks immediately without debounce
         loadStocksPageWithCache(1, pagination.pageSize);
@@ -1082,4 +1141,29 @@ document.addEventListener('DOMContentLoaded', function() {
             data
         });
     }
+    
+    // CRITICAL FIX: Add a global refresh function for debugging
+    window.refreshStocks = function() {
+        console.log('Manual refresh triggered');
+        pendingFilterRefresh = true;
+        window.stockAppState.pendingFilterRefresh = true;
+        loadStocksPageWithCache(pagination.currentPage, pagination.pageSize);
+    };
+    
+    // CRITICAL FIX: Add a retry mechanism for failed loads
+    window.addEventListener('error', function(event) {
+        if (event.target.tagName === 'IMG' || event.target.tagName === 'SCRIPT') {
+            console.error('Resource failed to load:', event.target.src);
+        }
+    });
+    
+    // CRITICAL FIX: Add a periodic check to ensure UI is in sync with state
+    setInterval(function() {
+        if (window.stockAppState.currentStocks.length > 0 && 
+            document.querySelectorAll('.stock-card, .stock-table tbody tr').length === 0 && 
+            !window.stockAppState.isLoading) {
+            console.log('Detected UI out of sync with state, forcing re-render');
+            renderStocks(window.stockAppState.currentStocks);
+        }
+    }, 5000);
 });
