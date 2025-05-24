@@ -1,6 +1,6 @@
 /**
  * PaginatedStockApp - Stock screener application with pagination and adaptive card view
- * OPTIMIZED VERSION with performance improvements
+ * OPTIMIZED VERSION with performance improvements and filter refresh fix
  * 
  * Features:
  * - Classic pagination with modern UX
@@ -8,6 +8,7 @@
  * - Optimized data loading with caching and debouncing
  * - Responsive design for all devices
  * - Fixed filter functionality with proper parameter mapping
+ * - Immediate UI refresh when filters change
  */
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
@@ -32,6 +33,7 @@ document.addEventListener('DOMContentLoaded', function() {
     let currentStocks = [];
     let totalItems = 0;
     let isLoading = false;
+    let pendingFilterRefresh = false; // FIX: Track if a filter refresh is pending
     
     // OPTIMIZATION: Add results cache for identical filter combinations
     const resultsCache = new Map();
@@ -83,7 +85,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Filter buttons
         document.querySelectorAll('.filter-button').forEach(button => {
-            // OPTIMIZATION: Use debounce for filter changes
+            // FIX: Remove debounce for filter changes to ensure immediate UI update
             button.addEventListener('click', () => {
                 toggleFilter(button);
                 // Show loading indicator immediately for better UX
@@ -93,7 +95,7 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Preset buttons
         document.querySelectorAll('.preset-button').forEach(button => {
-            // OPTIMIZATION: Use debounce for preset changes
+            // FIX: Remove debounce for preset changes to ensure immediate UI update
             button.addEventListener('click', () => {
                 togglePreset(button);
                 // Show loading indicator immediately for better UX
@@ -143,6 +145,13 @@ document.addEventListener('DOMContentLoaded', function() {
      * @returns {Promise} Promise that resolves with loaded stocks
      */
     function loadStocksPageWithCache(page, pageSize) {
+        // FIX: If a filter refresh is pending, always fetch fresh data
+        if (pendingFilterRefresh) {
+            console.log('Filter refresh pending, bypassing cache');
+            pendingFilterRefresh = false;
+            return loadStocksPage(page, pageSize);
+        }
+        
         // Generate cache key from current filters and pagination
         const cacheKey = generateCacheKey(page, pageSize, activeFilters);
         
@@ -682,6 +691,9 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
+        // FIX: Mark that a filter refresh is pending
+        pendingFilterRefresh = true;
+        
         // OPTIMIZATION: Use cached version when available
         loadStocksPageWithCache(1, pagination.pageSize);
     }
@@ -722,9 +734,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // OPTIMIZATION: Use cached version when available
-        // Use debounced version to prevent multiple API calls when toggling multiple filters
-        debouncedLoadStocksPage(1, pagination.pageSize);
+        // FIX: Mark that a filter refresh is pending
+        pendingFilterRefresh = true;
+        
+        // FIX: Always load stocks immediately without debounce
+        loadStocksPageWithCache(1, pagination.pageSize);
     }
     
     /**
@@ -762,9 +776,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // OPTIMIZATION: Use cached version when available
-        // Use debounced version to prevent multiple API calls when toggling multiple presets
-        debouncedLoadStocksPage(1, pagination.pageSize);
+        // FIX: Mark that a filter refresh is pending
+        pendingFilterRefresh = true;
+        
+        // FIX: Always load stocks immediately without debounce
+        loadStocksPageWithCache(1, pagination.pageSize);
     }
     
     /**
