@@ -1,6 +1,6 @@
 /**
  * PaginatedStockApp - Stock screener application with pagination and adaptive card view
- * PAGINATION FIX VERSION
+ * FINAL FIX VERSION - Combines pagination fix with direct DOM rendering
  * 
  * Features:
  * - Classic pagination with modern UX
@@ -8,6 +8,7 @@
  * - Responsive design for all devices
  * - Fixed filter functionality with proper parameter mapping
  * - Fixed pagination initialization and updates
+ * - Direct DOM rendering for reliable stock display
  */
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
@@ -215,7 +216,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     throw new Error('Invalid API response format');
                 }
                 
-                console.log('API response received:', data);
+                console.log('API response received with', data.stocks.length, 'stocks');
                 
                 // Process stocks data
                 const processedStocks = processStocksData(data.stocks);
@@ -227,8 +228,8 @@ document.addEventListener('DOMContentLoaded', function() {
                 // PAGINATION FIX: Update pagination with new total and current page
                 updatePagination(totalItems, currentPage);
                 
-                // Render stocks
-                renderStocks(currentStocks);
+                // DIRECT RENDERING FIX: Use direct DOM rendering approach
+                directRenderStocks(currentStocks);
                 
                 // Update API status
                 updateApiStatus(true);
@@ -297,86 +298,160 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Render stocks in current view
-     * @param {Array} stocks - Stocks to render
+     * DIRECT RENDERING FIX: Direct DOM rendering approach
+     * This bypasses any potential issues with the normal rendering pipeline
      */
-    function renderStocks(stocks) {
-        console.log('Rendering stocks in view:', currentView, 'with', stocks ? stocks.length : 0, 'stocks');
+    function directRenderStocks(stocks) {
+        console.log('DIRECT RENDERING: Rendering', stocks.length, 'stocks in', currentView, 'view');
         
-        if (currentView === 'card') {
-            renderCardView(stocks);
-        } else {
-            renderTableView(stocks);
-        }
-    }
-    
-    /**
-     * Render card view
-     * @param {Array} stocks - Stocks to render
-     */
-    function renderCardView(stocks) {
-        // Clear container
+        // Clear loading state
+        document.body.classList.remove('loading');
+        isLoading = false;
+        
+        // Show appropriate container and hide the other
+        stockCardsContainer.style.display = currentView === 'card' ? 'grid' : 'none';
+        stockTableContainer.style.display = currentView === 'table' ? 'block' : 'none';
+        
+        // Update active button
+        cardViewButton.classList.toggle('active', currentView === 'card');
+        tableViewButton.classList.toggle('active', currentView === 'table');
+        
+        // Clear containers
         stockCardsContainer.innerHTML = '';
-        
-        // Show loading skeleton if loading
-        if (isLoading) {
-            renderCardSkeletons();
-            return;
-        }
+        stockTableContainer.innerHTML = '';
         
         // Show empty state if no stocks
         if (!stocks || stocks.length === 0) {
-            stockCardsContainer.innerHTML = `
+            const emptyState = `
                 <div class="empty-state">
                     <div class="empty-icon">📊</div>
                     <div class="empty-title">No stocks found</div>
                     <div class="empty-message">Try adjusting your filters or search criteria</div>
                 </div>
             `;
+            
+            if (currentView === 'card') {
+                stockCardsContainer.innerHTML = emptyState;
+            } else {
+                stockTableContainer.innerHTML = emptyState;
+            }
+            
+            console.log('DIRECT RENDERING: Empty state rendered');
             return;
         }
+        
+        // Render stocks in current view
+        if (currentView === 'card') {
+            directRenderCardView(stocks);
+        } else {
+            directRenderTableView(stocks);
+        }
+        
+        // Force browser to repaint
+        forceRepaint();
+        
+        console.log('DIRECT RENDERING: Completed rendering', stocks.length, 'stocks');
+    }
+    
+    /**
+     * DIRECT RENDERING FIX: Force browser to repaint
+     */
+    function forceRepaint() {
+        console.log('Forcing browser repaint');
+        
+        // Method 1: Force reflow
+        if (currentView === 'card') {
+            stockCardsContainer.offsetHeight;
+        } else {
+            stockTableContainer.offsetHeight;
+        }
+        
+        // Method 2: Minimal DOM change
+        const tempDiv = document.createElement('div');
+        tempDiv.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0.001;';
+        document.body.appendChild(tempDiv);
+        setTimeout(() => {
+            document.body.removeChild(tempDiv);
+        }, 50);
+        
+        // Method 3: CSS animation
+        document.body.classList.add('force-repaint');
+        setTimeout(() => {
+            document.body.classList.remove('force-repaint');
+        }, 50);
+    }
+    
+    /**
+     * DIRECT RENDERING FIX: Direct render card view
+     */
+    function directRenderCardView(stocks) {
+        console.log('DIRECT RENDERING: Card view with', stocks.length, 'stocks');
         
         // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         // Render each stock card
         stocks.forEach(stock => {
-            const cardElement = document.createElement('div');
-            renderStockCard(stock, cardElement);
-            fragment.appendChild(cardElement);
+            const card = document.createElement('div');
+            card.className = 'stock-card';
+            
+            // Check if stock has incomplete data
+            if (!stock.price || !stock.marketCap || !stock.peRatio) {
+                card.classList.add('incomplete-data');
+            }
+            
+            // Create card content
+            card.innerHTML = `
+                <div class="stock-header">
+                    <div class="stock-symbol">${stock.symbol}</div>
+                    <div class="stock-exchange">${stock.exchange || 'N/A'}</div>
+                </div>
+                <div class="stock-name">${stock.name || 'Unknown'}</div>
+                <div class="stock-metrics">
+                    <div class="metric">
+                        <div class="metric-label">Price</div>
+                        <div class="metric-value">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Market Cap</div>
+                        <div class="metric-value">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">P/E Ratio</div>
+                        <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Dividend Yield</div>
+                        <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Debt/EBITDA</div>
+                        <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
+                    </div>
+                    <div class="metric">
+                        <div class="metric-label">Score</div>
+                        <div class="metric-value">
+                            ${renderScore(stock.score)}
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            fragment.appendChild(card);
         });
         
         // Append all cards at once
         stockCardsContainer.appendChild(fragment);
         
-        console.log('Card view rendered with', stocks.length, 'stocks');
+        // Verify cards were rendered
+        console.log('DIRECT RENDERING: Card view rendered with', stockCardsContainer.children.length, 'cards');
     }
     
     /**
-     * Render table view
-     * @param {Array} stocks - Stocks to render
+     * DIRECT RENDERING FIX: Direct render table view
      */
-    function renderTableView(stocks) {
-        // Clear container
-        stockTableContainer.innerHTML = '';
-        
-        // Show loading skeleton if loading
-        if (isLoading) {
-            renderTableSkeleton();
-            return;
-        }
-        
-        // Show empty state if no stocks
-        if (!stocks || stocks.length === 0) {
-            stockTableContainer.innerHTML = `
-                <div class="empty-state">
-                    <div class="empty-icon">📊</div>
-                    <div class="empty-title">No stocks found</div>
-                    <div class="empty-message">Try adjusting your filters or search criteria</div>
-                </div>
-            `;
-            return;
-        }
+    function directRenderTableView(stocks) {
+        console.log('DIRECT RENDERING: Table view with', stocks.length, 'stocks');
         
         // Create table
         const table = document.createElement('table');
@@ -456,63 +531,35 @@ document.addEventListener('DOMContentLoaded', function() {
         table.appendChild(tbody);
         stockTableContainer.appendChild(table);
         
-        console.log('Table view rendered with', stocks.length, 'stocks');
+        // Verify table was rendered
+        console.log('DIRECT RENDERING: Table view rendered with', tbody.children.length, 'rows');
     }
     
     /**
-     * Render stock card
-     * @param {Object} stock - Stock data
-     * @param {HTMLElement} container - Container element
+     * Render stocks in current view (legacy method, kept for compatibility)
+     * @param {Array} stocks - Stocks to render
      */
-    function renderStockCard(stock, container) {
-        // Clear container
-        container.innerHTML = '';
-        container.className = 'stock-card';
-        
-        // Check if stock has incomplete data
-        const hasIncompleteData = !stock.price || !stock.marketCap || !stock.peRatio;
-        if (hasIncompleteData) {
-            container.classList.add('incomplete-data');
-        }
-        
-        // Create card content with adaptive height
-        const content = `
-            <div class="stock-header">
-                <div class="stock-symbol">${stock.symbol}</div>
-                <div class="stock-exchange">${stock.exchange || 'N/A'}</div>
-            </div>
-            <div class="stock-name">${stock.name || 'Unknown'}</div>
-            <div class="stock-metrics">
-                <div class="metric">
-                    <div class="metric-label">Price</div>
-                    <div class="metric-value">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Market Cap</div>
-                    <div class="metric-value">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">P/E Ratio</div>
-                    <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Dividend Yield</div>
-                    <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Debt/EBITDA</div>
-                    <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
-                </div>
-                <div class="metric">
-                    <div class="metric-label">Score</div>
-                    <div class="metric-value">
-                        ${renderScore(stock.score)}
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        container.innerHTML = content;
+    function renderStocks(stocks) {
+        console.log('Legacy renderStocks called, redirecting to directRenderStocks');
+        directRenderStocks(stocks);
+    }
+    
+    /**
+     * Render card view (legacy method, kept for compatibility)
+     * @param {Array} stocks - Stocks to render
+     */
+    function renderCardView(stocks) {
+        console.log('Legacy renderCardView called, redirecting to directRenderCardView');
+        directRenderCardView(stocks);
+    }
+    
+    /**
+     * Render table view (legacy method, kept for compatibility)
+     * @param {Array} stocks - Stocks to render
+     */
+    function renderTableView(stocks) {
+        console.log('Legacy renderTableView called, redirecting to directRenderTableView');
+        directRenderTableView(stocks);
     }
     
     /**
@@ -679,7 +726,13 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Render appropriate view
         if (loading) {
-            renderStocks([]);
+            if (currentView === 'card') {
+                stockCardsContainer.innerHTML = '';
+                renderCardSkeletons();
+            } else {
+                stockTableContainer.innerHTML = '';
+                renderTableSkeleton();
+            }
         }
     }
     
@@ -702,16 +755,8 @@ document.addEventListener('DOMContentLoaded', function() {
         
         currentView = view;
         
-        // Update active button
-        cardViewButton.classList.toggle('active', view === 'card');
-        tableViewButton.classList.toggle('active', view === 'table');
-        
-        // Show/hide containers
-        stockCardsContainer.style.display = view === 'card' ? 'grid' : 'none';
-        stockTableContainer.style.display = view === 'table' ? 'block' : 'none';
-        
-        // Render current stocks in new view
-        renderStocks(currentStocks);
+        // DIRECT RENDERING FIX: Render stocks in new view
+        directRenderStocks(currentStocks);
     }
     
     /**
@@ -832,8 +877,8 @@ document.addEventListener('DOMContentLoaded', function() {
      * Handle resize
      */
     function handleResize() {
-        // Refresh current view
-        renderStocks(currentStocks);
+        // DIRECT RENDERING FIX: Refresh current view
+        directRenderStocks(currentStocks);
     }
     
     /**
@@ -1067,10 +1112,33 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    // PAGINATION FIX: Add a manual refresh function for debugging
+    // Add CSS for force-repaint class
+    const style = document.createElement('style');
+    style.textContent = `
+        .force-repaint {
+            animation: force-repaint-keyframes 0.001s;
+        }
+        @keyframes force-repaint-keyframes {
+            0% { opacity: 0.99999; }
+            100% { opacity: 1; }
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // DIRECT RENDERING FIX: Add a manual refresh function for debugging
     window.refreshStocks = function() {
         console.log('Manual refresh triggered');
-        loadStocksPage(currentPage, pageSize);
+        directRenderStocks(currentStocks);
+    };
+    
+    // DIRECT RENDERING FIX: Add a function to check stock data
+    window.checkStockData = function() {
+        console.log('Checking stock data:');
+        console.log('Current stocks array:', currentStocks);
+        console.log('Current stocks length:', currentStocks.length);
+        console.log('First stock:', currentStocks.length > 0 ? currentStocks[0] : 'none');
+        console.log('Current view:', currentView);
+        console.log('Is loading:', isLoading);
     };
     
     // PAGINATION FIX: Add a function to check pagination state
@@ -1085,4 +1153,14 @@ document.addEventListener('DOMContentLoaded', function() {
             console.log('Pagination total pages:', window.paginationControls.totalPages);
         }
     };
+    
+    // DIRECT RENDERING FIX: Add a periodic check to ensure UI is in sync with data
+    setInterval(function() {
+        if (currentStocks.length > 0 && 
+            document.querySelectorAll('.stock-card, .stock-table tbody tr').length === 0 && 
+            !isLoading) {
+            console.log('Detected UI out of sync with data, forcing re-render');
+            directRenderStocks(currentStocks);
+        }
+    }, 2000);
 });
