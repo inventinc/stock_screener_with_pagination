@@ -1,9 +1,13 @@
 /**
- * Minimal Stock Screener - Simplified rendering with vanilla JavaScript
+ * PaginatedStockApp - Stock screener application with pagination and adaptive card view
+ * PAGINATION FIX VERSION
  * 
- * This version maintains the exact same visual appearance and functionality
- * but uses a simplified rendering approach to ensure stocks always display
- * when filters are applied.
+ * Features:
+ * - Classic pagination with modern UX
+ * - Adaptive card heights for mobile
+ * - Responsive design for all devices
+ * - Fixed filter functionality with proper parameter mapping
+ * - Fixed pagination initialization and updates
  */
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
@@ -22,14 +26,18 @@ document.addEventListener('DOMContentLoaded', function() {
     const cardViewButton = document.getElementById('card-view-button');
     const tableViewButton = document.getElementById('table-view-button');
     
-    // Simple state
+    // State
     let currentView = 'card'; // 'card' or 'table'
     let activeFilters = {};
     let currentStocks = [];
     let totalItems = 0;
     let isLoading = false;
     
-    // Debug mode - log all major operations
+    // PAGINATION FIX: Ensure pagination is always initialized with default values
+    let currentPage = 1;
+    let pageSize = 50;
+    
+    // Debug mode
     const DEBUG = true;
     
     // Initialize app
@@ -39,121 +47,141 @@ document.addEventListener('DOMContentLoaded', function() {
      * Initialize the application
      */
     function initApp() {
-        logDebug('Initializing app');
+        console.log('Initializing app');
         
         // Set up event listeners
         setupEventListeners();
         
+        // PAGINATION FIX: Initialize pagination with default values
+        initPagination();
+        
         // Load initial data
         loadInitialData();
+        
+        // Update API status
+        updateApiStatus(true);
     }
     
     /**
      * Set up event listeners
      */
     function setupEventListeners() {
-        logDebug('Setting up event listeners');
+        console.log('Setting up event listeners');
         
         // Filters toggle
         filtersToggle.addEventListener('click', toggleFilters);
         
         // View buttons
-        cardViewButton.addEventListener('click', function() {
-            logDebug('Card view button clicked');
-            switchView('card');
-        });
-        
-        tableViewButton.addEventListener('click', function() {
-            logDebug('Table view button clicked');
-            switchView('table');
-        });
+        cardViewButton.addEventListener('click', () => switchView('card'));
+        tableViewButton.addEventListener('click', () => switchView('table'));
         
         // Search input
-        searchInput.addEventListener('input', debounce(function() {
-            logDebug('Search input changed');
-            handleSearch();
-        }, 500));
+        searchInput.addEventListener('input', debounce(handleSearch, 500));
         
         // Filter buttons
         document.querySelectorAll('.filter-button').forEach(button => {
-            button.addEventListener('click', function() {
-                logDebug('Filter button clicked:', button.dataset.filter, button.dataset.value);
+            button.addEventListener('click', () => {
                 toggleFilter(button);
+                // Show loading indicator immediately for better UX
+                setLoading(true);
             });
         });
         
         // Preset buttons
         document.querySelectorAll('.preset-button').forEach(button => {
-            button.addEventListener('click', function() {
-                logDebug('Preset button clicked:', button.dataset.preset);
+            button.addEventListener('click', () => {
                 togglePreset(button);
+                // Show loading indicator immediately for better UX
+                setLoading(true);
             });
         });
+        
+        // Window resize
+        window.addEventListener('resize', debounce(handleResize, 200));
+    }
+    
+    /**
+     * PAGINATION FIX: Initialize pagination with default values
+     */
+    function initPagination() {
+        console.log('Initializing pagination with defaults: page', currentPage, 'pageSize', pageSize);
+        
+        // Get pagination parameters from URL or defaults
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlPage = parseInt(urlParams.get('page'));
+        const urlPageSize = parseInt(urlParams.get('pageSize'));
+        
+        // Use URL values if available, otherwise use defaults
+        if (!isNaN(urlPage) && urlPage > 0) {
+            currentPage = urlPage;
+        }
+        
+        if (!isNaN(urlPageSize) && urlPageSize > 0) {
+            pageSize = urlPageSize;
+        }
+        
+        console.log('Final pagination values: page', currentPage, 'pageSize', pageSize);
+        
+        // Create new pagination controls
+        if (window.paginationControls) {
+            // Update existing pagination
+            window.paginationControls.update(totalItems, currentPage);
+            window.paginationControls.pageSize = pageSize;
+        } else {
+            // Create new pagination controls
+            window.paginationControls = new PaginationControls({
+                container: paginationContainer,
+                totalItems: totalItems,
+                pageSize: pageSize,
+                currentPage: currentPage,
+                onPageChange: handlePageChange
+            });
+        }
+        
+        // Verify pagination was initialized correctly
+        console.log('Pagination initialized:', 
+            'container:', paginationContainer, 
+            'controls:', window.paginationControls,
+            'current page:', window.paginationControls ? window.paginationControls.currentPage : 'undefined',
+            'page size:', window.paginationControls ? window.paginationControls.pageSize : 'undefined'
+        );
     }
     
     /**
      * Load initial data
      */
     function loadInitialData() {
-        logDebug('Loading initial data');
+        console.log('Loading initial data');
         
         // Show loading state
         setLoading(true);
         
-        // Get pagination parameters from URL or defaults
-        const urlParams = new URLSearchParams(window.location.search);
-        const page = parseInt(urlParams.get('page')) || 1;
-        const pageSize = parseInt(urlParams.get('pageSize')) || 50;
-        
-        // Initialize pagination
-        initPagination(page, pageSize);
-        
-        // Load stats
-        fetch('/api/stats')
-            .then(response => response.json())
-            .then(stats => {
-                logDebug('Stats loaded:', stats);
+        // Load stats and first page in parallel
+        Promise.all([
+            fetch('/api/stats').then(response => response.json()),
+            loadStocksPage(currentPage, pageSize)
+        ])
+            .then(([stats]) => {
                 updateStats(stats);
             })
             .catch(error => {
-                console.error('Error loading stats:', error);
+                console.error('Error loading initial data:', error);
+                updateApiStatus(false);
+                setLoading(false);
             });
-        
-        // Load first page of stocks
-        loadStocksPage(page, pageSize);
-    }
-    
-    /**
-     * Initialize pagination
-     */
-    function initPagination(page, pageSize) {
-        logDebug('Initializing pagination with page', page, 'pageSize', pageSize);
-        
-        // Create pagination controls if not exists
-        if (!window.paginationControls) {
-            window.paginationControls = new PaginationControls({
-                container: paginationContainer,
-                totalItems: 0,
-                pageSize: pageSize,
-                currentPage: page,
-                onPageChange: function(newPage, newPageSize) {
-                    logDebug('Page changed to', newPage, 'pageSize', newPageSize);
-                    loadStocksPage(newPage, newPageSize);
-                }
-            });
-        } else {
-            // Update existing pagination
-            window.paginationControls.update(totalItems, page);
-            window.paginationControls.pageSize = pageSize;
-            window.paginationControls.currentPage = page;
-        }
     }
     
     /**
      * Load a specific page of stocks from API
+     * @param {Number} page - Page number
+     * @param {Number} pageSize - Items per page
+     * @returns {Promise} Promise that resolves with loaded stocks
      */
     function loadStocksPage(page, pageSize) {
-        logDebug('Loading stocks page', page, 'pageSize', pageSize);
+        console.log('Loading stocks page', page, 'pageSize', pageSize);
+        
+        // PAGINATION FIX: Update current page and page size
+        currentPage = page;
         
         // Show loading state
         setLoading(true);
@@ -165,36 +193,17 @@ document.addEventListener('DOMContentLoaded', function() {
         });
         
         // Convert active filters to backend parameters
-        Object.entries(activeFilters).forEach(([key, value]) => {
-            if (key === 'market_cap') {
-                processMarketCapFilters(value, params);
-            } else if (key === 'volume') {
-                processVolumeFilters(value, params);
-            } else if (key === 'debt') {
-                processDebtFilters(value, params);
-            } else if (key === 'valuation') {
-                processValuationFilters(value, params);
-            } else if (key === 'preset') {
-                if (Array.isArray(value)) {
-                    value.forEach(v => params.append('preset', v));
-                } else {
-                    params.append('preset', value);
-                }
-            } else if (key === 'search') {
-                params.append('search', value);
-            } else {
-                if (Array.isArray(value)) {
-                    value.forEach(v => params.append(key, v));
-                } else {
-                    params.append(key, value);
-                }
-            }
+        const filterParams = convertFiltersToBackendParams(activeFilters);
+        
+        // Append filter parameters to the main params
+        filterParams.forEach((value, key) => {
+            params.append(key, value);
         });
         
-        logDebug('API request params:', params.toString());
+        console.log('Sending API request with params:', params.toString());
         
         // Fetch stocks from API
-        fetch(`/api/stocks?${params.toString()}`)
+        return fetch(`/api/stocks?${params.toString()}`)
             .then(response => {
                 if (!response.ok) {
                     throw new Error(`API error: ${response.status} ${response.statusText}`);
@@ -202,29 +211,75 @@ document.addEventListener('DOMContentLoaded', function() {
                 return response.json();
             })
             .then(data => {
-                logDebug('API response received with', data.stocks.length, 'stocks');
+                if (!data || !data.stocks || !Array.isArray(data.stocks)) {
+                    throw new Error('Invalid API response format');
+                }
+                
+                console.log('API response received:', data);
                 
                 // Process stocks data
-                processAndRenderStocks(data);
+                const processedStocks = processStocksData(data.stocks);
+                
+                // Update state
+                currentStocks = processedStocks;
+                totalItems = data.pagination ? data.pagination.total : processedStocks.length;
+                
+                // PAGINATION FIX: Update pagination with new total and current page
+                updatePagination(totalItems, currentPage);
+                
+                // Render stocks
+                renderStocks(currentStocks);
+                
+                // Update API status
+                updateApiStatus(true);
+                
+                setLoading(false);
+                return data;
             })
             .catch(error => {
                 console.error('Error loading stocks:', error);
+                updateApiStatus(false);
                 setLoading(false);
+                throw error;
             });
     }
     
     /**
-     * Process and render stocks data
+     * PAGINATION FIX: Update pagination with new total and current page
      */
-    function processAndRenderStocks(data) {
-        if (!data || !data.stocks || !Array.isArray(data.stocks)) {
-            console.error('Invalid API response format');
-            setLoading(false);
-            return;
+    function updatePagination(total, page) {
+        console.log('Updating pagination with total', total, 'page', page);
+        
+        // Update total items
+        totalItems = total;
+        
+        // Update current page
+        currentPage = page;
+        
+        // Update pagination controls
+        if (window.paginationControls) {
+            window.paginationControls.update(total, page);
+        } else {
+            // Create pagination controls if not exists
+            initPagination();
         }
         
-        // Format stock data for display
-        const processedStocks = data.stocks.map(stock => {
+        // Verify pagination was updated correctly
+        console.log('Pagination updated:', 
+            'total:', totalItems, 
+            'current page:', window.paginationControls ? window.paginationControls.currentPage : 'undefined',
+            'total pages:', window.paginationControls ? window.paginationControls.totalPages : 'undefined'
+        );
+    }
+    
+    /**
+     * Process stocks data
+     * @param {Array} stocks - Raw stocks data
+     * @returns {Array} Processed stocks
+     */
+    function processStocksData(stocks) {
+        return stocks.map(stock => {
+            // Format numbers for display
             if (stock.price) {
                 stock.formattedPrice = formatCurrency(stock.price);
             }
@@ -239,178 +294,89 @@ document.addEventListener('DOMContentLoaded', function() {
             
             return stock;
         });
-        
-        // Update state
-        currentStocks = processedStocks;
-        totalItems = data.pagination ? data.pagination.total : processedStocks.length;
-        
-        // Update pagination
-        if (window.paginationControls) {
-            window.paginationControls.update(totalItems);
-        }
-        
-        // Render stocks
-        renderStocks();
-        
-        // Hide loading state
-        setLoading(false);
-        
-        logDebug('Stocks processed and rendered');
     }
     
     /**
      * Render stocks in current view
+     * @param {Array} stocks - Stocks to render
      */
-    function renderStocks() {
-        logDebug('Rendering stocks in', currentView, 'view with', currentStocks.length, 'stocks');
+    function renderStocks(stocks) {
+        console.log('Rendering stocks in view:', currentView, 'with', stocks ? stocks.length : 0, 'stocks');
         
-        // Clear containers first
+        if (currentView === 'card') {
+            renderCardView(stocks);
+        } else {
+            renderTableView(stocks);
+        }
+    }
+    
+    /**
+     * Render card view
+     * @param {Array} stocks - Stocks to render
+     */
+    function renderCardView(stocks) {
+        // Clear container
         stockCardsContainer.innerHTML = '';
-        stockTableContainer.innerHTML = '';
         
-        // Show appropriate container
-        stockCardsContainer.style.display = currentView === 'card' ? 'grid' : 'none';
-        stockTableContainer.style.display = currentView === 'table' ? 'block' : 'none';
-        
-        // Update active button
-        cardViewButton.classList.toggle('active', currentView === 'card');
-        tableViewButton.classList.toggle('active', currentView === 'table');
-        
-        // If loading, show skeletons
+        // Show loading skeleton if loading
         if (isLoading) {
-            if (currentView === 'card') {
-                renderCardSkeletons();
-            } else {
-                renderTableSkeleton();
-            }
+            renderCardSkeletons();
             return;
         }
         
-        // If no stocks, show empty state
-        if (!currentStocks || currentStocks.length === 0) {
-            const emptyState = `
+        // Show empty state if no stocks
+        if (!stocks || stocks.length === 0) {
+            stockCardsContainer.innerHTML = `
                 <div class="empty-state">
                     <div class="empty-icon">📊</div>
                     <div class="empty-title">No stocks found</div>
                     <div class="empty-message">Try adjusting your filters or search criteria</div>
                 </div>
             `;
-            
-            if (currentView === 'card') {
-                stockCardsContainer.innerHTML = emptyState;
-            } else {
-                stockTableContainer.innerHTML = emptyState;
-            }
             return;
         }
         
-        // Render stocks in current view
-        if (currentView === 'card') {
-            renderCardView();
-        } else {
-            renderTableView();
-        }
-        
-        // Force browser to repaint
-        forceRepaint();
-    }
-    
-    /**
-     * Force browser to repaint
-     */
-    function forceRepaint() {
-        logDebug('Forcing browser repaint');
-        
-        // Method 1: Force reflow
-        if (currentView === 'card') {
-            stockCardsContainer.offsetHeight;
-        } else {
-            stockTableContainer.offsetHeight;
-        }
-        
-        // Method 2: Minimal DOM change
-        const tempDiv = document.createElement('div');
-        tempDiv.style.cssText = 'position:absolute;width:1px;height:1px;opacity:0.001;';
-        document.body.appendChild(tempDiv);
-        setTimeout(() => {
-            document.body.removeChild(tempDiv);
-        }, 50);
-        
-        // Method 3: CSS animation
-        document.body.classList.add('force-repaint');
-        setTimeout(() => {
-            document.body.classList.remove('force-repaint');
-        }, 50);
-    }
-    
-    /**
-     * Render card view
-     */
-    function renderCardView() {
-        logDebug('Rendering card view');
-        
-        // Create document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         // Render each stock card
-        currentStocks.forEach(stock => {
-            const card = document.createElement('div');
-            card.className = 'stock-card';
-            
-            // Check if stock has incomplete data
-            if (!stock.price || !stock.marketCap || !stock.peRatio) {
-                card.classList.add('incomplete-data');
-            }
-            
-            // Create card content
-            card.innerHTML = `
-                <div class="stock-header">
-                    <div class="stock-symbol">${stock.symbol}</div>
-                    <div class="stock-exchange">${stock.exchange || 'N/A'}</div>
-                </div>
-                <div class="stock-name">${stock.name || 'Unknown'}</div>
-                <div class="stock-metrics">
-                    <div class="metric">
-                        <div class="metric-label">Price</div>
-                        <div class="metric-value">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">Market Cap</div>
-                        <div class="metric-value">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">P/E Ratio</div>
-                        <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">Dividend Yield</div>
-                        <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">Debt/EBITDA</div>
-                        <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
-                    </div>
-                    <div class="metric">
-                        <div class="metric-label">Score</div>
-                        <div class="metric-value">
-                            ${renderScore(stock.score)}
-                        </div>
-                    </div>
-                </div>
-            `;
-            
-            fragment.appendChild(card);
+        stocks.forEach(stock => {
+            const cardElement = document.createElement('div');
+            renderStockCard(stock, cardElement);
+            fragment.appendChild(cardElement);
         });
         
         // Append all cards at once
         stockCardsContainer.appendChild(fragment);
+        
+        console.log('Card view rendered with', stocks.length, 'stocks');
     }
     
     /**
      * Render table view
+     * @param {Array} stocks - Stocks to render
      */
-    function renderTableView() {
-        logDebug('Rendering table view');
+    function renderTableView(stocks) {
+        // Clear container
+        stockTableContainer.innerHTML = '';
+        
+        // Show loading skeleton if loading
+        if (isLoading) {
+            renderTableSkeleton();
+            return;
+        }
+        
+        // Show empty state if no stocks
+        if (!stocks || stocks.length === 0) {
+            stockTableContainer.innerHTML = `
+                <div class="empty-state">
+                    <div class="empty-icon">📊</div>
+                    <div class="empty-title">No stocks found</div>
+                    <div class="empty-message">Try adjusting your filters or search criteria</div>
+                </div>
+            `;
+            return;
+        }
         
         // Create table
         const table = document.createElement('table');
@@ -446,11 +412,11 @@ document.addEventListener('DOMContentLoaded', function() {
         // Create table body
         const tbody = document.createElement('tbody');
         
-        // Create document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         // Create rows
-        currentStocks.forEach(stock => {
+        stocks.forEach(stock => {
             const row = document.createElement('tr');
             
             // Add cells
@@ -489,17 +455,73 @@ document.addEventListener('DOMContentLoaded', function() {
         tbody.appendChild(fragment);
         table.appendChild(tbody);
         stockTableContainer.appendChild(table);
+        
+        console.log('Table view rendered with', stocks.length, 'stocks');
+    }
+    
+    /**
+     * Render stock card
+     * @param {Object} stock - Stock data
+     * @param {HTMLElement} container - Container element
+     */
+    function renderStockCard(stock, container) {
+        // Clear container
+        container.innerHTML = '';
+        container.className = 'stock-card';
+        
+        // Check if stock has incomplete data
+        const hasIncompleteData = !stock.price || !stock.marketCap || !stock.peRatio;
+        if (hasIncompleteData) {
+            container.classList.add('incomplete-data');
+        }
+        
+        // Create card content with adaptive height
+        const content = `
+            <div class="stock-header">
+                <div class="stock-symbol">${stock.symbol}</div>
+                <div class="stock-exchange">${stock.exchange || 'N/A'}</div>
+            </div>
+            <div class="stock-name">${stock.name || 'Unknown'}</div>
+            <div class="stock-metrics">
+                <div class="metric">
+                    <div class="metric-label">Price</div>
+                    <div class="metric-value">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Market Cap</div>
+                    <div class="metric-value">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">P/E Ratio</div>
+                    <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Dividend Yield</div>
+                    <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Debt/EBITDA</div>
+                    <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Score</div>
+                    <div class="metric-value">
+                        ${renderScore(stock.score)}
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        container.innerHTML = content;
     }
     
     /**
      * Render card skeletons for loading state
      */
     function renderCardSkeletons() {
-        logDebug('Rendering card skeletons');
-        
         const pageSize = window.paginationControls ? window.paginationControls.pageSize : 50;
         
-        // Create document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         for (let i = 0; i < Math.min(pageSize, 12); i++) {
@@ -530,8 +552,6 @@ document.addEventListener('DOMContentLoaded', function() {
      * Render table skeleton for loading state
      */
     function renderTableSkeleton() {
-        logDebug('Rendering table skeleton');
-        
         const pageSize = window.paginationControls ? window.paginationControls.pageSize : 50;
         
         const table = document.createElement('table');
@@ -554,7 +574,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Create table body
         const tbody = document.createElement('tbody');
         
-        // Create document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         // Create rows
@@ -578,6 +598,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Render score
+     * @param {Number} score - Score value
+     * @returns {String} HTML for score
      */
     function renderScore(score) {
         if (!score && score !== 0) return 'N/A';
@@ -593,7 +615,24 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
+     * Handle page change
+     * @param {Number} page - New page number
+     * @param {Number} newPageSize - Items per page
+     */
+    function handlePageChange(page, newPageSize) {
+        console.log('Page changed to', page, 'pageSize', newPageSize);
+        
+        // PAGINATION FIX: Update current page and page size
+        currentPage = page;
+        pageSize = newPageSize;
+        
+        // Load stocks with new page
+        loadStocksPage(page, newPageSize);
+    }
+    
+    /**
      * Update stats
+     * @param {Object} stats - Stats data
      */
     function updateStats(stats) {
         if (!stats) return;
@@ -608,13 +647,11 @@ document.addEventListener('DOMContentLoaded', function() {
             const date = new Date(stats.lastUpdated);
             lastUpdatedElement.textContent = date.toLocaleString();
         }
-        
-        // Update API status
-        updateApiStatus(true);
     }
     
     /**
      * Update API status
+     * @param {Boolean} connected - Whether API is connected
      */
     function updateApiStatus(connected) {
         if (connected) {
@@ -630,38 +667,51 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Set loading state
+     * @param {Boolean} loading - Whether data is loading
      */
     function setLoading(loading) {
-        logDebug('Setting loading state to', loading);
+        console.log('Setting loading state to', loading);
         
         isLoading = loading;
         
         // Update loading indicator
         document.body.classList.toggle('loading', loading);
+        
+        // Render appropriate view
+        if (loading) {
+            renderStocks([]);
+        }
     }
     
     /**
      * Toggle filters
      */
     function toggleFilters() {
-        logDebug('Toggling filters');
-        
         filtersContent.classList.toggle('collapsed');
         filtersToggle.classList.toggle('collapsed');
     }
     
     /**
      * Switch view
+     * @param {String} view - View to switch to ('card' or 'table')
      */
     function switchView(view) {
         if (currentView === view) return;
         
-        logDebug('Switching view to', view);
+        console.log('Switching view to', view);
         
         currentView = view;
         
-        // Render stocks in new view
-        renderStocks();
+        // Update active button
+        cardViewButton.classList.toggle('active', view === 'card');
+        tableViewButton.classList.toggle('active', view === 'table');
+        
+        // Show/hide containers
+        stockCardsContainer.style.display = view === 'card' ? 'grid' : 'none';
+        stockTableContainer.style.display = view === 'table' ? 'block' : 'none';
+        
+        // Render current stocks in new view
+        renderStocks(currentStocks);
     }
     
     /**
@@ -670,7 +720,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function handleSearch() {
         const searchValue = searchInput.value.trim();
         
-        logDebug('Handling search for', searchValue);
+        console.log('Handling search for', searchValue);
         
         // Update active filters
         if (searchValue) {
@@ -679,23 +729,25 @@ document.addEventListener('DOMContentLoaded', function() {
             delete activeFilters.search;
         }
         
-        // Reset to first page and apply filters
+        // PAGINATION FIX: Reset to first page and apply filters
+        currentPage = 1;
         if (window.paginationControls) {
             window.paginationControls.goToPage(1);
         }
         
         // Load stocks with new filters
-        loadStocksPage(1, window.paginationControls ? window.paginationControls.pageSize : 50);
+        loadStocksPage(1, pageSize);
     }
     
     /**
      * Toggle filter
+     * @param {HTMLElement} button - Filter button
      */
     function toggleFilter(button) {
         const filter = button.dataset.filter;
         const value = button.dataset.value;
         
-        logDebug('Toggling filter', filter, value);
+        console.log('Toggling filter', filter, value);
         
         // Toggle active state
         button.classList.toggle('active');
@@ -720,24 +772,26 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        logDebug('Active filters after toggle:', activeFilters);
+        console.log('Active filters after toggle:', activeFilters);
         
-        // Reset to first page and apply filters
+        // PAGINATION FIX: Reset to first page and apply filters
+        currentPage = 1;
         if (window.paginationControls) {
             window.paginationControls.goToPage(1);
         }
         
         // Load stocks with new filters
-        loadStocksPage(1, window.paginationControls ? window.paginationControls.pageSize : 50);
+        loadStocksPage(1, pageSize);
     }
     
     /**
      * Toggle preset
+     * @param {HTMLElement} button - Preset button
      */
     function togglePreset(button) {
         const preset = button.dataset.preset;
         
-        logDebug('Toggling preset', preset);
+        console.log('Toggling preset', preset);
         
         // Toggle active state
         button.classList.toggle('active');
@@ -762,19 +816,138 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        logDebug('Active presets after toggle:', activeFilters.preset);
+        console.log('Active presets after toggle:', activeFilters.preset);
         
-        // Reset to first page and apply filters
+        // PAGINATION FIX: Reset to first page and apply filters
+        currentPage = 1;
         if (window.paginationControls) {
             window.paginationControls.goToPage(1);
         }
         
         // Load stocks with new filters
-        loadStocksPage(1, window.paginationControls ? window.paginationControls.pageSize : 50);
+        loadStocksPage(1, pageSize);
+    }
+    
+    /**
+     * Handle resize
+     */
+    function handleResize() {
+        // Refresh current view
+        renderStocks(currentStocks);
+    }
+    
+    /**
+     * Format currency
+     * @param {Number} value - Value to format
+     * @returns {String} Formatted currency
+     */
+    function formatCurrency(value) {
+        if (value === null || value === undefined) return null;
+        
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
+    }
+    
+    /**
+     * Format large number
+     * @param {Number} value - Value to format
+     * @returns {String} Formatted number
+     */
+    function formatLargeNumber(value) {
+        if (value === null || value === undefined) return null;
+        
+        if (value >= 1e12) {
+            return '$' + (value / 1e12).toFixed(2) + 'T';
+        } else if (value >= 1e9) {
+            return '$' + (value / 1e9).toFixed(2) + 'B';
+        } else if (value >= 1e6) {
+            return '$' + (value / 1e6).toFixed(2) + 'M';
+        } else if (value >= 1e3) {
+            return '$' + (value / 1e3).toFixed(2) + 'K';
+        } else {
+            return '$' + value.toFixed(2);
+        }
+    }
+    
+    /**
+     * Format number
+     * @param {Number} value - Value to format
+     * @returns {String} Formatted number
+     */
+    function formatNumber(value) {
+        return new Intl.NumberFormat('en-US').format(value);
+    }
+    
+    /**
+     * Debounce function
+     * @param {Function} func - Function to debounce
+     * @param {Number} wait - Wait time in milliseconds
+     * @returns {Function} Debounced function
+     */
+    function debounce(func, wait) {
+        let timeout;
+        return function(...args) {
+            clearTimeout(timeout);
+            timeout = setTimeout(() => func.apply(this, args), wait);
+        };
+    }
+    
+    /**
+     * Convert frontend filter values to backend API parameters
+     * @param {Object} activeFilters - Object containing active filters
+     * @returns {URLSearchParams} Converted parameters for backend API
+     */
+    function convertFiltersToBackendParams(activeFilters) {
+        const params = new URLSearchParams();
+        
+        // Process each filter type
+        Object.entries(activeFilters).forEach(([key, value]) => {
+            switch (key) {
+                case 'market_cap':
+                    processMarketCapFilters(value, params);
+                    break;
+                case 'volume':
+                    processVolumeFilters(value, params);
+                    break;
+                case 'debt':
+                    processDebtFilters(value, params);
+                    break;
+                case 'valuation':
+                    processValuationFilters(value, params);
+                    break;
+                case 'preset':
+                    // Presets are handled directly by the backend
+                    if (Array.isArray(value)) {
+                        value.forEach(v => params.append('preset', v));
+                    } else {
+                        params.append('preset', value);
+                    }
+                    break;
+                case 'search':
+                    // Search is passed directly
+                    params.append('search', value);
+                    break;
+                default:
+                    // For any other filters, pass them through as-is
+                    if (Array.isArray(value)) {
+                        value.forEach(v => params.append(key, v));
+                    } else {
+                        params.append(key, value);
+                    }
+            }
+        });
+        
+        return params;
     }
     
     /**
      * Process market cap filters
+     * @param {Array|String} values - Market cap filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
      */
     function processMarketCapFilters(values, params) {
         if (!Array.isArray(values)) {
@@ -807,6 +980,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Process volume filters
+     * @param {Array|String} values - Volume filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
      */
     function processVolumeFilters(values, params) {
         if (!Array.isArray(values)) {
@@ -834,6 +1009,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Process debt filters
+     * @param {Array|String} values - Debt filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
      */
     function processDebtFilters(values, params) {
         if (!Array.isArray(values)) {
@@ -862,6 +1039,8 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Process valuation filters
+     * @param {Array|String} values - Valuation filter values
+     * @param {URLSearchParams} params - URL parameters object to modify
      */
     function processValuationFilters(values, params) {
         if (!Array.isArray(values)) {
@@ -888,92 +1067,22 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    /**
-     * Format currency
-     */
-    function formatCurrency(value) {
-        if (value === null || value === undefined) return null;
-        
-        return new Intl.NumberFormat('en-US', {
-            style: 'currency',
-            currency: 'USD',
-            minimumFractionDigits: 2,
-            maximumFractionDigits: 2
-        }).format(value);
-    }
-    
-    /**
-     * Format large number
-     */
-    function formatLargeNumber(value) {
-        if (value === null || value === undefined) return null;
-        
-        if (value >= 1e12) {
-            return '$' + (value / 1e12).toFixed(2) + 'T';
-        } else if (value >= 1e9) {
-            return '$' + (value / 1e9).toFixed(2) + 'B';
-        } else if (value >= 1e6) {
-            return '$' + (value / 1e6).toFixed(2) + 'M';
-        } else if (value >= 1e3) {
-            return '$' + (value / 1e3).toFixed(2) + 'K';
-        } else {
-            return '$' + value.toFixed(2);
-        }
-    }
-    
-    /**
-     * Format number
-     */
-    function formatNumber(value) {
-        return new Intl.NumberFormat('en-US').format(value);
-    }
-    
-    /**
-     * Debounce function
-     */
-    function debounce(func, wait) {
-        let timeout;
-        return function(...args) {
-            clearTimeout(timeout);
-            timeout = setTimeout(() => func.apply(this, args), wait);
-        };
-    }
-    
-    /**
-     * Log debug message
-     */
-    function logDebug(...args) {
-        if (DEBUG) {
-            console.log('[StockScreener]', ...args);
-        }
-    }
-    
-    // Add CSS for force-repaint class
-    const style = document.createElement('style');
-    style.textContent = `
-        .force-repaint {
-            animation: force-repaint-keyframes 0.001s;
-        }
-        @keyframes force-repaint-keyframes {
-            0% { opacity: 0.99999; }
-            100% { opacity: 1; }
-        }
-    `;
-    document.head.appendChild(style);
-    
-    // Add a manual refresh function for debugging
+    // PAGINATION FIX: Add a manual refresh function for debugging
     window.refreshStocks = function() {
-        logDebug('Manual refresh triggered');
-        renderStocks();
+        console.log('Manual refresh triggered');
+        loadStocksPage(currentPage, pageSize);
     };
     
-    // Add a periodic check to ensure UI is in sync with data
-    setInterval(function() {
-        if (currentStocks.length > 0 && 
-            document.querySelectorAll('.stock-card, .stock-table tbody tr').length === 0 && 
-            !isLoading) {
-            logDebug('Detected UI out of sync with data, forcing re-render');
-            renderStocks();
+    // PAGINATION FIX: Add a function to check pagination state
+    window.checkPagination = function() {
+        console.log('Checking pagination state:');
+        console.log('Current page:', currentPage);
+        console.log('Page size:', pageSize);
+        console.log('Total items:', totalItems);
+        console.log('Pagination controls:', window.paginationControls);
+        if (window.paginationControls) {
+            console.log('Pagination current page:', window.paginationControls.currentPage);
+            console.log('Pagination total pages:', window.paginationControls.totalPages);
         }
-    }, 2000);
+    };
 });
