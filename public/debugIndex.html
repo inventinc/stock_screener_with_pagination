@@ -1,0 +1,790 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Screener Debug Mode</title>
+    <style>
+        /* Reset and Base Styles */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+        }
+        
+        body {
+            background-color: #f5f5f7;
+            color: #333;
+            line-height: 1.6;
+        }
+        
+        /* CSS for Header */
+        header {
+            background-color: #fff;
+            padding: 10px 16px;
+            border-bottom: 1px solid #e1e4e8;
+        }
+        
+        .header-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .logo-container {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .logo-icon {
+            color: #0066ff;
+            font-size: 24px;
+        }
+        
+        .logo-text {
+            font-size: 20px;
+            font-weight: 600;
+            color: #0066ff;
+        }
+        
+        .api-status {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .api-status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+        }
+        
+        .api-status-indicator.connected {
+            background-color: #28a745;
+        }
+        
+        .api-status-indicator.disconnected {
+            background-color: #dc3545;
+        }
+        
+        /* Stats Container */
+        .stats-container {
+            display: flex;
+            justify-content: space-around;
+            padding: 12px 16px;
+            background-color: #fff;
+            border-bottom: 1px solid #e1e4e8;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .stat-item {
+            text-align: center;
+            flex: 1;
+            min-width: 80px;
+        }
+        
+        .stat-value {
+            font-size: 18px;
+            font-weight: 600;
+            color: #0066ff;
+        }
+        
+        .stat-label {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .last-updated {
+            width: 100%;
+            text-align: left;
+            font-size: 12px;
+            color: #666;
+            margin-top: 4px;
+        }
+        
+        /* Main Content */
+        main {
+            padding: 16px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+        
+        /* Filters Section */
+        .filters-section {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            margin-bottom: 16px;
+            overflow: hidden;
+        }
+        
+        .filters-header {
+            padding: 12px 16px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid #e1e4e8;
+            cursor: pointer;
+        }
+        
+        .filters-title {
+            font-size: 18px;
+            font-weight: 600;
+        }
+        
+        .filters-toggle {
+            transition: transform 0.3s ease;
+        }
+        
+        .filters-toggle.collapsed {
+            transform: rotate(180deg);
+        }
+        
+        .filters-content {
+            padding: 16px;
+            transition: max-height 0.3s ease, padding 0.3s ease;
+            max-height: 1000px;
+        }
+        
+        .filters-content.collapsed { 
+            max-height: 0;
+            padding-top: 0;
+            padding-bottom: 0;
+            overflow: hidden;
+        }
+        
+        .filter-group {
+            margin-bottom: 16px;
+        }
+        
+        .filter-group-title {
+            font-size: 16px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+        
+        .info-icon {
+            color: #0066ff;
+            font-size: 16px;
+            cursor: pointer;
+        }
+        
+        .filter-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 12px;
+        }
+        
+        .preset-button {
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+        }
+        
+        .preset-button.value {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        .preset-button.growth {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .preset-button.dividend {
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .preset-button.quality {
+            background-color: #fff8e1;
+            color: #f9a825;
+        }
+        
+        .preset-button:hover {
+            filter: brightness(0.95);
+        }
+        
+        .preset-button.active {
+            filter: brightness(0.9);
+            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
+        }
+        
+        .filter-button {
+            display: flex;
+            align-items: center;
+            gap: 6px;
+            padding: 8px 12px;
+            border-radius: 6px;
+            border: 1px solid #e1e4e8;
+            background-color: #fff;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .filter-button:hover {
+            border-color: #0066ff;
+        }
+        
+        .filter-button.active {
+            background-color: #0066ff;
+            color: #fff;
+            border-color: #0066ff;
+        }
+        
+        .filter-button .icon {
+            font-size: 16px;
+        }
+        
+        /* View Controls */
+        .view-controls {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .view-button {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            gap: 8px;
+            padding: 12px;
+            border-radius: 8px;
+            border: 1px solid #e1e4e8;
+            background-color: #fff;
+            font-size: 16px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            min-width: 120px;
+        }
+        
+        .view-button:hover {
+            border-color: #0066ff;
+        }
+        
+        .view-button.active {
+            background-color: #0066ff;
+            color: #fff;
+            border-color: #0066ff;
+        }
+        
+        .view-button .icon {
+            font-size: 18px;
+        }
+        
+        /* Search Bar */
+        .search-container {
+            margin-bottom: 16px;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 12px 16px;
+            border-radius: 8px;
+            border: 1px solid #e1e4e8;
+            font-size: 16px;
+            outline: none;
+            transition: border-color 0.2s ease;
+        }
+        
+        .search-input:focus {
+            border-color: #0066ff;
+        }
+        
+        /* Stocks Section */
+        .stocks-section {
+            margin-bottom: 16px;
+        }
+        
+        .section-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 16px;
+        }
+        
+        /* Card View */
+        .stock-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+            min-height: 400px;
+        }
+        
+        .stock-card {
+            background-color: #fff;
+            border-radius: 8px;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+            padding: 16px;
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+        }
+        
+        .stock-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+        }
+        
+        .stock-card.incomplete-data {
+            border-left: 4px solid #f9a825;
+        }
+        
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+        }
+        
+        .stock-symbol {
+            font-size: 20px;
+            font-weight: 700;
+            color: #0066ff;
+        }
+        
+        .stock-exchange {
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .stock-name {
+            font-size: 16px;
+            margin-bottom: 12px;
+            color: #333;
+        }
+        
+        .stock-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+        }
+        
+        .metric {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: #666;
+        }
+        
+        .metric-value {
+            font-size: 16px;
+            font-weight: 500;
+        }
+        
+        .score {
+            padding: 2px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+        
+        .score.excellent {
+            background-color: #e8f5e9;
+            color: #2e7d32;
+        }
+        
+        .score.good {
+            background-color: #fff8e1;
+            color: #f9a825;
+        }
+        
+        .score.average {
+            background-color: #e3f2fd;
+            color: #1565c0;
+        }
+        
+        .score.below-average {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        .score.poor {
+            background-color: #ffebee;
+            color: #c62828;
+        }
+        
+        /* Table View */
+        .stock-table-container {
+            overflow-x: auto;
+            display: none;
+        }
+        
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: #fff;
+            border-radius: 8px;
+            overflow: hidden;
+            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+        }
+        
+        .stock-table th, .stock-table td {
+            padding: 12px 16px;
+            text-align: left;
+            border-bottom: 1px solid #e1e4e8;
+        }
+        
+        .stock-table th {
+            background-color: #f8f9fa;
+            font-weight: 600;
+            color: #333;
+        }
+        
+        .stock-table tr:last-child td {
+            border-bottom: none;
+        }
+        
+        .stock-table tr:hover {
+            background-color: #f8f9fa;
+        }
+        
+        /* Load More Button */
+        .load-more-btn {
+            display: block;
+            margin: 20px auto;
+            padding: 10px 20px;
+            background-color: #0066ff;
+            color: white;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 16px;
+        }
+        
+        .load-more-btn:hover {
+            background-color: #0055cc;
+        }
+        
+        .load-more-btn:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        
+        /* Debug Panel */
+        .debug-panel {
+            position: fixed;
+            bottom: 0;
+            left: 0;
+            right: 0;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: #fff;
+            padding: 10px;
+            font-family: monospace;
+            font-size: 12px;
+            max-height: 200px;
+            overflow-y: auto;
+            z-index: 9999;
+        }
+        
+        .debug-title {
+            font-weight: bold;
+            margin-bottom: 5px;
+        }
+        
+        .debug-log {
+            margin-bottom: 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+            padding-bottom: 5px;
+        }
+        
+        .debug-error {
+            color: #ff6b6b;
+        }
+        
+        .debug-warning {
+            color: #feca57;
+        }
+        
+        .debug-info {
+            color: #54a0ff;
+        }
+        
+        /* Responsive Adjustments */
+        @media (max-width: 768px) {
+            .stats-container {
+                flex-wrap: wrap;
+                justify-content: space-around;
+            }
+            
+            .stat-item {
+                min-width: 80px;
+                margin-bottom: 8px;
+            }
+            
+            .view-controls {
+                flex-wrap: wrap;
+            }
+            
+            .view-button {
+                flex: 1 0 calc(50% - 4px);
+            }
+            
+            .stock-metrics {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-container">
+            <div class="logo-container">
+                <div class="logo-icon">📈</div>
+                <div class="logo-text">Stock Screener (Debug Mode)</div>
+            </div>
+            <div class="api-status">
+                <div id="api-status-indicator" class="api-status-indicator disconnected"></div>
+                <span id="api-status-text">disconnected</span>
+            </div>
+        </div>
+    </header>
+    
+    <div class="stats-container">
+        <div class="stat-item">
+            <div id="total-stocks" class="stat-value">0</div>
+            <div class="stat-label">Stocks</div>
+        </div>
+        <div class="stat-item">
+            <div id="nyse-stocks" class="stat-value">0</div>
+            <div class="stat-label">NYSE</div>
+        </div>
+        <div class="stat-item">
+            <div id="nasdaq-stocks" class="stat-value">0</div>
+            <div class="stat-label">NASDAQ</div>
+        </div>
+        <div class="last-updated">
+            Last updated: <span id="last-updated">--:--:--</span>
+        </div>
+    </div>
+    
+    <main>
+        <div class="filters-section">
+            <div class="filters-header">
+                <div class="filters-title">Filters</div>
+                <div id="filters-toggle" class="filters-toggle">▼</div>
+            </div>
+            <div id="filters-content" class="filters-content">
+                <div class="filter-group">
+                    <div class="filter-group-title">
+                        Presets
+                        <div class="info-icon" title="Predefined filter combinations for common investment strategies">ⓘ</div>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="preset-button value" data-preset="value">Value</button>
+                        <button class="preset-button growth" data-preset="growth">Growth</button>
+                        <button class="preset-button dividend" data-preset="dividend">Dividend</button>
+                        <button class="preset-button quality" data-preset="quality">Quality</button>
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-group-title">
+                        Market Cap
+                        <div class="info-icon" title="Total market value of a company's outstanding shares">ⓘ</div>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="market_cap" data-value="large">Large Cap</button>
+                        <button class="filter-button" data-filter="market_cap" data-value="mid">Mid Cap</button>
+                        <button class="filter-button" data-filter="market_cap" data-value="small">Small Cap</button>
+                        <button class="filter-button" data-filter="market_cap" data-value="micro">Micro Cap</button>
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-group-title">
+                        Trading Volume
+                        <div class="info-icon" title="Average daily trading volume in dollars">ⓘ</div>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="volume" data-value="high">High</button>
+                        <button class="filter-button" data-filter="volume" data-value="medium">Medium</button>
+                        <button class="filter-button" data-filter="volume" data-value="low">Low</button>
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-group-title">
+                        Debt Level
+                        <div class="info-icon" title="Net debt to EBITDA ratio">ⓘ</div>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="debt" data-value="low">Low</button>
+                        <button class="filter-button" data-filter="debt" data-value="moderate">Moderate</button>
+                        <button class="filter-button" data-filter="debt" data-value="high">High</button>
+                    </div>
+                </div>
+                
+                <div class="filter-group">
+                    <div class="filter-group-title">
+                        Valuation
+                        <div class="info-icon" title="Based on EV/EBIT ratio compared to industry average">ⓘ</div>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="valuation" data-value="undervalued">Undervalued</button>
+                        <button class="filter-button" data-filter="valuation" data-value="fair">Fair Value</button>
+                        <button class="filter-button" data-filter="valuation" data-value="overvalued">Overvalued</button>
+                    </div>
+                </div>
+                
+                <button id="reset-filters-btn" class="load-more-btn" style="margin-top: 16px;">Reset Filters</button>
+            </div>
+        </div>
+        
+        <div class="search-container">
+            <input type="text" id="search-input" class="search-input" placeholder="Search by symbol or company name...">
+        </div>
+        
+        <div class="view-controls">
+            <button class="view-button active" data-view="card">
+                <span class="icon">📇</span>
+                Card View
+            </button>
+            <button class="view-button" data-view="table">
+                <span class="icon">📊</span>
+                Table View
+            </button>
+            <button id="export-csv-btn" class="view-button">
+                <span class="icon">📤</span>
+                Export CSV
+            </button>
+        </div>
+        
+        <div class="stocks-section">
+            <div id="stock-cards-container" class="stock-cards-container">
+                <div class="loading-message" style="grid-column: 1 / -1; text-align: center; padding: 40px;">
+                    Loading stocks...
+                </div>
+            </div>
+            
+            <div id="stock-table-container" class="stock-table-container">
+                <table class="stock-table">
+                    <thead>
+                        <tr>
+                            <th>Symbol</th>
+                            <th>Name</th>
+                            <th>Exchange</th>
+                            <th>Price</th>
+                            <th>Market Cap</th>
+                            <th>P/E Ratio</th>
+                            <th>Dividend Yield</th>
+                            <th>52W High</th>
+                            <th>Score</th>
+                        </tr>
+                    </thead>
+                    <tbody id="stock-table-body">
+                        <tr>
+                            <td colspan="9" style="text-align: center; padding: 20px;">Loading stocks...</td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <button id="load-more-btn" class="load-more-btn">Load More Stocks</button>
+    </main>
+    
+    <div id="tooltip"></div>
+    
+    <div class="debug-panel">
+        <div class="debug-title">Debug Console</div>
+        <div id="debug-log"></div>
+    </div>
+    
+    <!-- Include JavaScript files -->
+    <script src="/dataFieldMapper.js"></script>
+    <script src="/enhancedDataManager.js"></script>
+    <script src="/advancedStockCard.js"></script>
+    <script src="/debugApp.js"></script>
+    
+    <script>
+        // Debug console implementation
+        (function() {
+            const debugLog = document.getElementById('debug-log');
+            const originalConsoleLog = console.log;
+            const originalConsoleError = console.error;
+            const originalConsoleWarn = console.warn;
+            const originalConsoleInfo = console.info;
+            
+            // Override console methods
+            console.log = function() {
+                // Call original console method
+                originalConsoleLog.apply(console, arguments);
+                
+                // Add to debug panel
+                const logEntry = document.createElement('div');
+                logEntry.className = 'debug-log';
+                logEntry.textContent = Array.from(arguments).join(' ');
+                debugLog.appendChild(logEntry);
+                debugLog.scrollTop = debugLog.scrollHeight;
+            };
+            
+            console.error = function() {
+                // Call original console method
+                originalConsoleError.apply(console, arguments);
+                
+                // Add to debug panel
+                const logEntry = document.createElement('div');
+                logEntry.className = 'debug-log debug-error';
+                logEntry.textContent = 'ERROR: ' + Array.from(arguments).join(' ');
+                debugLog.appendChild(logEntry);
+                debugLog.scrollTop = debugLog.scrollHeight;
+            };
+            
+            console.warn = function() {
+                // Call original console method
+                originalConsoleWarn.apply(console, arguments);
+                
+                // Add to debug panel
+                const logEntry = document.createElement('div');
+                logEntry.className = 'debug-log debug-warning';
+                logEntry.textContent = 'WARNING: ' + Array.from(arguments).join(' ');
+                debugLog.appendChild(logEntry);
+                debugLog.scrollTop = debugLog.scrollHeight;
+            };
+            
+            console.info = function() {
+                // Call original console method
+                originalConsoleInfo.apply(console, arguments);
+                
+                // Add to debug panel
+                const logEntry = document.createElement('div');
+                logEntry.className = 'debug-log debug-info';
+                logEntry.textContent = 'INFO: ' + Array.from(arguments).join(' ');
+                debugLog.appendChild(logEntry);
+                debugLog.scrollTop = debugLog.scrollHeight;
+            };
+            
+            // Add network request logging
+            const originalFetch = window.fetch;
+            window.fetch = function() {
+                console.log('Fetch request:', arguments[0]);
+                return originalFetch.apply(this, arguments)
+                    .then(response => {
+                        console.log('Fetch response status:', response.status, 'for', arguments[0]);
+                        return response;
+                    })
+                    .catch(error => {
+                        console.error('Fetch error for', arguments[0], ':', error);
+                        throw error;
+                    });
+            };
+        })();
+    </script>
+</body>
+</html>

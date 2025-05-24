@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Screener - Paginated Version</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        /* Additional styles for pagination and table view */
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+            font-size: 14px;
+        }
+        
+        .stock-table th, .stock-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #e0e0e0;
+        }
+        
+        .stock-table th {
+            background-color: #f5f5f5;
+            font-weight: 600;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        
+        .stock-table tr:hover {
+            background-color: #f9f9f9;
+        }
+        
+        .stock-symbol-cell {
+            font-weight: 600;
+            color: #1a73e8;
+        }
+        
+        .pagination-container {
+            display: flex;
+            justify-content: center;
+            margin: 20px 0;
+            flex-wrap: wrap;
+        }
+        
+        .pagination-button {
+            padding: 8px 12px;
+            margin: 0 4px;
+            border: 1px solid #ddd;
+            background-color: white;
+            color: #333;
+            cursor: pointer;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .pagination-button:hover {
+            background-color: #f5f5f5;
+        }
+        
+        .pagination-button.active {
+            background-color: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+        
+        .pagination-button.disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+        .pagination-info {
+            margin: 0 10px;
+            display: flex;
+            align-items: center;
+            font-size: 14px;
+            color: #666;
+        }
+        
+        .page-size-selector {
+            margin-left: 10px;
+            padding: 6px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .view-controls {
+            display: flex;
+            margin-bottom: 15px;
+        }
+        
+        .view-button {
+            padding: 8px 15px;
+            background-color: #f5f5f5;
+            border: 1px solid #ddd;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .view-button:first-child {
+            border-radius: 4px 0 0 4px;
+        }
+        
+        .view-button:last-child {
+            border-radius: 0 4px 4px 0;
+        }
+        
+        .view-button.active {
+            background-color: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+        
+        #stock-table-container {
+            overflow-x: auto;
+            display: none;
+        }
+        
+        /* Responsive adjustments */
+        @media (max-width: 768px) {
+            .stock-table {
+                font-size: 12px;
+            }
+            
+            .stock-table th, .stock-table td {
+                padding: 8px 5px;
+            }
+            
+            .pagination-button {
+                padding: 6px 10px;
+                font-size: 12px;
+            }
+        }
+        
+        /* Tooltip styles */
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 5px 10px;
+            border-radius: 4px;
+            font-size: 12px;
+            z-index: 1000;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+        
+        .tooltip.visible {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Stock Screener</h1>
+        <div class="api-status">
+            <div id="api-status-indicator" class="api-status-indicator"></div>
+            <span id="api-status-text">Connecting...</span>
+        </div>
+    </header>
+    
+    <main>
+        <section class="stats-section">
+            <div class="stats-container">
+                <div class="stat-card">
+                    <div class="stat-value" id="total-stocks">0</div>
+                    <div class="stat-label">Total Stocks</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="nyse-stocks">0</div>
+                    <div class="stat-label">NYSE</div>
+                </div>
+                <div class="stat-card">
+                    <div class="stat-value" id="nasdaq-stocks">0</div>
+                    <div class="stat-label">NASDAQ</div>
+                </div>
+            </div>
+            <div class="last-updated" id="last-updated">Last updated: -</div>
+        </section>
+        
+        <section class="search-section">
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="Search by symbol or name...">
+            </div>
+        </section>
+        
+        <section class="filters-section">
+            <div class="filters-header" id="filters-toggle">
+                <h2>Filters</h2>
+                <span class="toggle-icon">▼</span>
+            </div>
+            <div class="filters-content" id="filters-content">
+                <div class="filter-group" data-multi-select="false">
+                    <h3>Market Cap</h3>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter-type="market_cap" data-filter-value="large">Large Cap ($10B+)</button>
+                        <button class="filter-button" data-filter-type="market_cap" data-filter-value="mid">Mid Cap ($2-10B)</button>
+                        <button class="filter-button" data-filter-type="market_cap" data-filter-value="small">Small Cap ($300M-2B)</button>
+                        <button class="filter-button" data-filter-type="market_cap" data-filter-value="micro">Micro Cap (<$300M)</button>
+                    </div>
+                </div>
+                
+                <div class="filter-group" data-multi-select="false">
+                    <h3>Exchange</h3>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter-type="exchange" data-filter-value="XNAS">NASDAQ</button>
+                        <button class="filter-button" data-filter-type="exchange" data-filter-value="XNYS">NYSE</button>
+                    </div>
+                </div>
+                
+                <div class="filter-group" data-multi-select="false">
+                    <h3>Volume</h3>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter-type="volume" data-filter-value="high">High Volume</button>
+                        <button class="filter-button" data-filter-type="volume" data-filter-value="low">Low Volume</button>
+                    </div>
+                </div>
+                
+                <div class="filter-group" data-multi-select="false">
+                    <h3>Presets</h3>
+                    <div class="filter-buttons">
+                        <button class="preset-button" data-preset="value">Value Stocks</button>
+                        <button class="preset-button" data-preset="growth">Growth Stocks</button>
+                        <button class="preset-button" data-preset="dividend">Dividend Stocks</button>
+                        <button class="preset-button" data-preset="quality">Quality Stocks</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+        
+        <section class="view-section">
+            <div class="view-controls">
+                <button id="card-view-button" class="view-button active">Card View</button>
+                <button id="table-view-button" class="view-button">Table View</button>
+            </div>
+            
+            <div id="stock-cards" class="stock-cards"></div>
+            <div id="stock-table-container"></div>
+            
+            <div id="pagination-container" class="pagination-container"></div>
+        </section>
+        
+        <div class="export-section">
+            <button id="export-csv" class="export-button">
+                <span class="export-icon">📊</span>
+                Export CSV
+            </button>
+        </div>
+    </main>
+    
+    <footer>
+        <p>&copy; 2025 Stock Screener. All rights reserved.</p>
+    </footer>
+    
+    <script src="tooltip.js"></script>
+    <script src="paginationControls.js"></script>
+    <script src="fixedPaginatedApp.js"></script>
+</body>
+</html>

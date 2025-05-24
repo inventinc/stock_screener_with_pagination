@@ -1,0 +1,8 @@
+(node:139383) [DEP0040] DeprecationWarning: The `punycode` module is deprecated. Please use a userland alternative instead.
+(Use `node --trace-deprecation ...` to show where the warning was created)
+Server running on port 3001
+Server started at 2025-05-23T05:32:33.369Z
+CORS enabled for all origins
+Connecting to MongoDB...
+MongoDB Connected: ac-wfzbsly-shard-00-00.cclapno.mongodb.net
+Connected to MongoDB

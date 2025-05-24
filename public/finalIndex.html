@@ -1,0 +1,629 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Screener - Final Version</title>
+    <style>
+        :root {
+            --primary-color: #2c3e50;
+            --secondary-color: #3498db;
+            --accent-color: #e74c3c;
+            --background-color: #f8f9fa;
+            --card-background: #ffffff;
+            --text-color: #333333;
+            --border-color: #dddddd;
+            --success-color: #2ecc71;
+            --warning-color: #f39c12;
+            --danger-color: #e74c3c;
+            --info-color: #3498db;
+            --shadow: 0 2px 5px rgba(0, 0, 0, 0.1);
+            --border-radius: 8px;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background-color: var(--background-color);
+            color: var(--text-color);
+            line-height: 1.6;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        header {
+            background-color: var(--primary-color);
+            color: white;
+            padding: 10px 0;
+            /* Removed sticky positioning as requested */
+            z-index: 100;
+            box-shadow: var(--shadow);
+        }
+
+        .header-content {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+        }
+
+        .logo {
+            font-size: 1.5rem;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+        }
+
+        .logo i {
+            margin-right: 10px;
+            color: var(--secondary-color);
+        }
+
+        /* Made stats smaller and less prominent as requested */
+        .stats {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            margin-left: auto;
+            font-size: 0.8rem;
+        }
+
+        .stat-item {
+            background-color: rgba(255, 255, 255, 0.1);
+            padding: 3px 8px;
+            border-radius: var(--border-radius);
+            display: flex;
+            align-items: center;
+        }
+
+        .stat-label {
+            margin-right: 5px;
+            opacity: 0.8;
+        }
+
+        .stat-value {
+            font-weight: bold;
+        }
+
+        .api-status {
+            display: flex;
+            align-items: center;
+            margin-left: 15px;
+            font-size: 0.8rem;
+        }
+
+        .status-indicator {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            margin-right: 5px;
+        }
+
+        .connected {
+            background-color: var(--success-color);
+        }
+
+        .disconnected {
+            background-color: var(--danger-color);
+        }
+
+        .filters-section {
+            background-color: var(--card-background);
+            border-radius: var(--border-radius);
+            margin-bottom: 20px;
+            box-shadow: var(--shadow);
+            overflow: hidden;
+        }
+
+        .filters-header {
+            background-color: var(--secondary-color);
+            color: white;
+            padding: 10px 20px;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .filters-toggle {
+            transition: transform 0.3s ease;
+        }
+
+        .filters-toggle.collapsed {
+            transform: rotate(180deg);
+        }
+
+        .filters-content {
+            padding: 20px;
+            max-height: 1000px;
+            overflow: hidden;
+            transition: max-height 0.3s ease;
+        }
+
+        .filters-content.collapsed {
+            max-height: 0;
+            padding: 0 20px;
+        }
+
+        .filter-group {
+            margin-bottom: 20px;
+        }
+
+        .filter-group h3 {
+            margin-bottom: 10px;
+            color: var(--primary-color);
+            font-size: 1.1rem;
+        }
+
+        .filter-buttons {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .filter-button, .preset-button {
+            background-color: #f1f1f1;
+            border: none;
+            padding: 8px 15px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            font-size: 0.9rem;
+        }
+
+        .filter-button:hover, .preset-button:hover {
+            background-color: #e0e0e0;
+        }
+
+        .filter-button.active, .preset-button.active {
+            background-color: var(--secondary-color);
+            color: white;
+        }
+
+        .search-export {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+            gap: 10px;
+        }
+
+        .search-container {
+            flex: 1;
+            min-width: 200px;
+            max-width: 400px;
+        }
+
+        #search-input {
+            width: 100%;
+            padding: 10px 15px;
+            border: 1px solid var(--border-color);
+            border-radius: var(--border-radius);
+            font-size: 1rem;
+        }
+
+        .view-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .view-button, #export-csv-btn, #reset-filters-btn {
+            background-color: var(--primary-color);
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: var(--border-radius);
+            cursor: pointer;
+            transition: background-color 0.2s ease;
+            font-size: 0.9rem;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+
+        .view-button:hover, #export-csv-btn:hover, #reset-filters-btn:hover {
+            background-color: #34495e;
+        }
+
+        .view-button.active {
+            background-color: var(--secondary-color);
+        }
+
+        #stock-cards-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 20px;
+            margin-bottom: 20px;
+            min-height: 400px;
+            position: relative;
+            overflow: auto;
+            max-height: 70vh;
+            padding: 10px;
+            background-color: var(--background-color);
+            border-radius: var(--border-radius);
+        }
+
+        .stock-card {
+            background-color: var(--card-background);
+            border-radius: var(--border-radius);
+            padding: 15px;
+            box-shadow: var(--shadow);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .stock-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 5px 15px rgba(0, 0, 0, 0.1);
+        }
+
+        .stock-card.incomplete-data::before {
+            content: "";
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 5px;
+            background-color: var(--warning-color);
+        }
+
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .stock-symbol {
+            font-size: 1.3rem;
+            font-weight: bold;
+            color: var(--primary-color);
+        }
+
+        .stock-exchange {
+            font-size: 0.8rem;
+            color: #777;
+            background-color: #f1f1f1;
+            padding: 3px 8px;
+            border-radius: 10px;
+        }
+
+        .stock-name {
+            font-size: 1rem;
+            margin-bottom: 10px;
+            color: var(--text-color);
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .stock-price-container {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .stock-price {
+            font-size: 1.2rem;
+            font-weight: bold;
+        }
+
+        .stock-price-change {
+            font-size: 0.9rem;
+        }
+
+        .positive {
+            color: var(--success-color);
+        }
+
+        .negative {
+            color: var(--danger-color);
+        }
+
+        .stock-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 10px;
+        }
+
+        .metric {
+            display: flex;
+            justify-content: space-between;
+            font-size: 0.9rem;
+        }
+
+        .metric-label {
+            color: #777;
+        }
+
+        .metric-value {
+            font-weight: 500;
+        }
+
+        .score {
+            font-weight: bold;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: white;
+        }
+
+        .excellent {
+            background-color: #27ae60;
+        }
+
+        .good {
+            background-color: #2ecc71;
+        }
+
+        .average {
+            background-color: #f39c12;
+        }
+
+        .below-average {
+            background-color: #e67e22;
+        }
+
+        .poor {
+            background-color: #e74c3c;
+        }
+
+        #stock-table-container {
+            overflow-x: auto;
+            margin-bottom: 20px;
+            display: none;
+            max-height: 70vh;
+            overflow-y: auto;
+        }
+
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+            background-color: var(--card-background);
+            border-radius: var(--border-radius);
+            overflow: hidden;
+            box-shadow: var(--shadow);
+        }
+
+        .stock-table th {
+            background-color: var(--primary-color);
+            color: white;
+            text-align: left;
+            padding: 12px 15px;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+
+        .stock-table td {
+            padding: 10px 15px;
+            border-bottom: 1px solid var(--border-color);
+        }
+
+        .stock-table tr:last-child td {
+            border-bottom: none;
+        }
+
+        .stock-table tr:hover {
+            background-color: rgba(0, 0, 0, 0.02);
+        }
+
+        .loading-progress-bar {
+            width: 100%;
+            height: 5px;
+            background-color: #f1f1f1;
+            border-radius: 5px;
+            overflow: hidden;
+            margin-bottom: 10px;
+        }
+
+        .progress-inner {
+            height: 100%;
+            background-color: var(--secondary-color);
+            width: 0;
+            transition: width 0.3s ease;
+        }
+
+        .loading-progress-text {
+            text-align: center;
+            font-size: 0.9rem;
+            color: #777;
+            margin-bottom: 20px;
+        }
+
+        #tooltip {
+            position: fixed;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 4px;
+            font-size: 0.9rem;
+            z-index: 1000;
+            pointer-events: none;
+            display: none;
+            max-width: 300px;
+        }
+
+        .info-row {
+            background-color: #f8f9fa;
+        }
+
+        @media (max-width: 768px) {
+            .header-content {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+            }
+
+            .stats {
+                margin-left: 0;
+                width: 100%;
+                justify-content: space-between;
+            }
+
+            .api-status {
+                margin-left: 0;
+                margin-top: 10px;
+            }
+
+            .search-export {
+                flex-direction: column;
+            }
+
+            .search-container {
+                max-width: 100%;
+            }
+
+            .stock-metrics {
+                grid-template-columns: 1fr;
+            }
+
+            #stock-cards-container {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <div class="header-content">
+            <div class="logo">
+                <i>📈</i> Stock Screener
+            </div>
+            <div class="stats">
+                <div class="stat-item">
+                    <span class="stat-label">Total:</span>
+                    <span id="total-stocks" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">NYSE:</span>
+                    <span id="nyse-stocks" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">NASDAQ:</span>
+                    <span id="nasdaq-stocks" class="stat-value">0</span>
+                </div>
+                <div class="stat-item">
+                    <span class="stat-label">Updated:</span>
+                    <span id="last-updated" class="stat-value">--:--</span>
+                </div>
+            </div>
+            <div class="api-status">
+                <div id="api-status-indicator" class="status-indicator disconnected"></div>
+                <span id="api-status-text">disconnected</span>
+            </div>
+        </div>
+    </header>
+
+    <div class="container">
+        <div class="filters-section">
+            <div id="filters-toggle" class="filters-header">
+                <h2>Filters</h2>
+                <div class="filters-toggle">▼</div>
+            </div>
+            <div id="filters-content" class="filters-content">
+                <div class="filter-group">
+                    <h3>Market Cap</h3>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="market_cap" data-value="large" title="Companies with market cap over $10 billion">Large Cap</button>
+                        <button class="filter-button" data-filter="market_cap" data-value="mid" title="Companies with market cap between $2-10 billion">Mid Cap</button>
+                        <button class="filter-button" data-filter="market_cap" data-value="small" title="Companies with market cap between $300 million - $2 billion">Small Cap</button>
+                        <button class="filter-button" data-filter="market_cap" data-value="micro" title="Companies with market cap under $300 million">Micro Cap</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h3>Trading Volume</h3>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="volume" data-value="high" title="Stocks with daily dollar volume over $5 million">High Volume</button>
+                        <button class="filter-button" data-filter="volume" data-value="medium" title="Stocks with daily dollar volume between $1-5 million">Medium Volume</button>
+                        <button class="filter-button" data-filter="volume" data-value="low" title="Stocks with daily dollar volume under $1 million">Low Volume</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h3>Debt Level</h3>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="debt" data-value="low" title="Companies with Net Debt to EBITDA < 1">Low Debt</button>
+                        <button class="filter-button" data-filter="debt" data-value="moderate" title="Companies with Net Debt to EBITDA between 1-2">Moderate Debt</button>
+                        <button class="filter-button" data-filter="debt" data-value="high" title="Companies with Net Debt to EBITDA > 2">High Debt</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h3>Valuation</h3>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="valuation" data-value="undervalued" title="Stocks with P/E ratio < 15">Undervalued</button>
+                        <button class="filter-button" data-filter="valuation" data-value="fair" title="Stocks with P/E ratio between 15-25">Fair Value</button>
+                        <button class="filter-button" data-filter="valuation" data-value="overvalued" title="Stocks with P/E ratio > 25">Overvalued</button>
+                    </div>
+                </div>
+
+                <div class="filter-group">
+                    <h3>Presets</h3>
+                    <div class="filter-buttons">
+                        <button class="preset-button" data-preset="value" title="Low P/E, Low Debt stocks">Value Stocks</button>
+                        <button class="preset-button" data-preset="growth" title="High growth potential stocks">Growth Stocks</button>
+                        <button class="preset-button" data-preset="dividend" title="Stocks with dividend yield > 2%">Dividend Stocks</button>
+                        <button class="preset-button" data-preset="quality" title="High ROTCE, Low Debt stocks">Quality Stocks</button>
+                    </div>
+                </div>
+
+                <button id="reset-filters-btn">Reset All Filters</button>
+            </div>
+        </div>
+
+        <div class="search-export">
+            <div class="search-container">
+                <input type="text" id="search-input" placeholder="Search by symbol or name...">
+            </div>
+            <div class="view-buttons">
+                <button class="view-button active" data-view="card">Card View</button>
+                <button class="view-button" data-view="table">Table View</button>
+                <button id="export-csv-btn">Export CSV</button>
+            </div>
+        </div>
+
+        <div id="stock-cards-container"></div>
+
+        <div id="stock-table-container">
+            <table class="stock-table">
+                <thead>
+                    <tr>
+                        <th>Symbol</th>
+                        <th>Name</th>
+                        <th>Exchange</th>
+                        <th>Price</th>
+                        <th>Change</th>
+                        <th>Market Cap</th>
+                        <th>P/E</th>
+                        <th>Div Yield</th>
+                        <th>Volume</th>
+                        <th>Score</th>
+                    </tr>
+                </thead>
+                <tbody id="stock-table-body"></tbody>
+            </table>
+        </div>
+    </div>
+
+    <script src="improvedDataManager.js"></script>
+    <script src="improvedVirtualScroller.js"></script>
+    <script src="finalApp.js"></script>
+</body>
+</html>
