@@ -1,27 +1,14 @@
 /**
  * PaginatedStockApp - Stock screener application with pagination and adaptive card view
- * OPTIMIZED VERSION with performance improvements and global state fix
+ * SIMPLIFIED VERSION with DOM repaint fix
  * 
  * Features:
  * - Classic pagination with modern UX
  * - Adaptive card heights for mobile
- * - Optimized data loading with caching and debouncing
  * - Responsive design for all devices
  * - Fixed filter functionality with proper parameter mapping
- * - Immediate UI refresh when filters change
- * - Global state management for reliable rendering
+ * - DOM repaint fix to ensure UI updates after data loads
  */
-
-// CRITICAL FIX: Create global state object to ensure state is accessible
-window.stockAppState = {
-    currentView: 'card',
-    activeFilters: {},
-    currentStocks: [],
-    totalItems: 0,
-    isLoading: false,
-    pendingFilterRefresh: false
-};
-
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
     const stockCardsContainer = document.getElementById('stock-cards');
@@ -39,18 +26,12 @@ document.addEventListener('DOMContentLoaded', function() {
     const cardViewButton = document.getElementById('card-view-button');
     const tableViewButton = document.getElementById('table-view-button');
     
-    // Initialize state from global object
-    let currentView = window.stockAppState.currentView;
-    let activeFilters = window.stockAppState.activeFilters;
-    let currentStocks = window.stockAppState.currentStocks;
-    let totalItems = window.stockAppState.totalItems;
-    let isLoading = window.stockAppState.isLoading;
-    let pendingFilterRefresh = window.stockAppState.pendingFilterRefresh;
-    
-    // OPTIMIZATION: Add results cache for identical filter combinations
-    const resultsCache = new Map();
-    const CACHE_SIZE_LIMIT = 20; // Maximum number of cached results
-    const CACHE_DURATION = 2 * 60 * 1000; // 2 minutes
+    // State
+    let currentView = 'card'; // 'card' or 'table'
+    let activeFilters = {};
+    let currentStocks = [];
+    let totalItems = 0;
+    let isLoading = false;
     
     // Initialize pagination controls
     const pagination = new PaginationControls({
@@ -92,12 +73,11 @@ document.addEventListener('DOMContentLoaded', function() {
         cardViewButton.addEventListener('click', () => switchView('card'));
         tableViewButton.addEventListener('click', () => switchView('table'));
         
-        // OPTIMIZATION: Use longer debounce for search to reduce API calls
+        // Search input
         searchInput.addEventListener('input', debounce(handleSearch, 500));
         
         // Filter buttons
         document.querySelectorAll('.filter-button').forEach(button => {
-            // FIX: Remove debounce for filter changes to ensure immediate UI update
             button.addEventListener('click', () => {
                 toggleFilter(button);
                 // Show loading indicator immediately for better UX
@@ -107,7 +87,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Preset buttons
         document.querySelectorAll('.preset-button').forEach(button => {
-            // FIX: Remove debounce for preset changes to ensure immediate UI update
             button.addEventListener('click', () => {
                 togglePreset(button);
                 // Show loading indicator immediately for better UX
@@ -135,10 +114,10 @@ document.addEventListener('DOMContentLoaded', function() {
         pagination.currentPage = page;
         pagination.pageSize = pageSize;
         
-        // OPTIMIZATION: Load stats and first page in parallel
+        // Load stats and first page in parallel
         Promise.all([
             fetch('/api/stats').then(response => response.json()),
-            loadStocksPageWithCache(page, pageSize)
+            loadStocksPage(page, pageSize)
         ])
             .then(([stats]) => {
                 updateStats(stats);
@@ -148,47 +127,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 updateApiStatus(false);
                 setLoading(false);
             });
-    }
-    
-    /**
-     * Load a specific page of stocks with caching
-     * @param {Number} page - Page number
-     * @param {Number} pageSize - Items per page
-     * @returns {Promise} Promise that resolves with loaded stocks
-     */
-    function loadStocksPageWithCache(page, pageSize) {
-        // FIX: If a filter refresh is pending, always fetch fresh data
-        if (pendingFilterRefresh) {
-            console.log('Filter refresh pending, bypassing cache');
-            pendingFilterRefresh = false;
-            return loadStocksPage(page, pageSize);
-        }
-        
-        // Generate cache key from current filters and pagination
-        const cacheKey = generateCacheKey(page, pageSize, activeFilters);
-        
-        // Check cache for existing results
-        const cachedResult = checkCache(cacheKey);
-        if (cachedResult) {
-            console.log('Cache hit for query:', cacheKey);
-            // Process cached results
-            updateStocksState(cachedResult.stocks, cachedResult.pagination.total);
-            
-            // Update pagination
-            pagination.update(totalItems, page);
-            
-            // Render stocks
-            renderStocks(currentStocks);
-            
-            // Update API status
-            updateApiStatus(true);
-            
-            setLoading(false);
-            return Promise.resolve(cachedResult);
-        }
-        
-        console.log('Cache miss, fetching from API:', cacheKey);
-        return loadStocksPage(page, pageSize);
     }
     
     /**
@@ -235,20 +173,17 @@ document.addEventListener('DOMContentLoaded', function() {
                 const processedStocks = processStocksData(data.stocks);
                 
                 // Update state
-                updateStocksState(processedStocks, data.pagination ? data.pagination.total : processedStocks.length);
+                currentStocks = processedStocks;
+                totalItems = data.pagination ? data.pagination.total : processedStocks.length;
                 
                 // Update pagination
                 pagination.update(totalItems, page);
                 
-                // CRITICAL FIX: Force render after data is loaded
-                renderStocks(currentStocks);
+                // Render stocks with DOM repaint fix
+                renderStocksWithRepaint(processedStocks);
                 
                 // Update API status
                 updateApiStatus(true);
-                
-                // OPTIMIZATION: Cache the results
-                const cacheKey = generateCacheKey(page, pageSize, activeFilters);
-                cacheResults(cacheKey, data);
                 
                 setLoading(false);
                 return data;
@@ -259,24 +194,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 setLoading(false);
                 throw error;
             });
-    }
-    
-    /**
-     * Update stocks state and sync with global state
-     * @param {Array} stocks - Processed stocks
-     * @param {Number} total - Total items count
-     */
-    function updateStocksState(stocks, total) {
-        // Update local state
-        currentStocks = stocks;
-        totalItems = total;
-        
-        // CRITICAL FIX: Sync with global state
-        window.stockAppState.currentStocks = stocks;
-        window.stockAppState.totalItems = total;
-        
-        // CRITICAL FIX: Expose renderStocks globally for debugging
-        window.renderStocks = renderStocks;
     }
     
     /**
@@ -304,23 +221,45 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
+     * Render stocks with DOM repaint fix
+     * @param {Array} stocks - Stocks to render
+     */
+    function renderStocksWithRepaint(stocks) {
+        console.log('Rendering stocks with repaint fix, count:', stocks ? stocks.length : 0);
+        
+        // First, render the stocks normally
+        renderStocks(stocks);
+        
+        // CRITICAL FIX: Force a DOM repaint by using requestAnimationFrame
+        requestAnimationFrame(() => {
+            // Add a temporary class to force repaint
+            document.body.classList.add('force-repaint');
+            
+            // Remove the class in the next frame to complete the repaint
+            requestAnimationFrame(() => {
+                document.body.classList.remove('force-repaint');
+                
+                // CRITICAL FIX: Force a reflow by accessing offsetHeight
+                if (currentView === 'card') {
+                    stockCardsContainer.offsetHeight;
+                } else {
+                    stockTableContainer.offsetHeight;
+                }
+                
+                console.log('DOM repaint completed');
+            });
+        });
+    }
+    
+    /**
      * Render stocks in current view
      * @param {Array} stocks - Stocks to render
      */
     function renderStocks(stocks) {
-        console.log('Rendering stocks in view:', currentView, 'with', stocks ? stocks.length : 0, 'stocks');
-        
         if (currentView === 'card') {
             renderCardView(stocks);
         } else {
             renderTableView(stocks);
-        }
-        
-        // CRITICAL FIX: Update loading state after rendering
-        if (isLoading) {
-            document.body.classList.add('loading');
-        } else {
-            document.body.classList.remove('loading');
         }
     }
     
@@ -350,7 +289,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return;
         }
         
-        // OPTIMIZATION: Use document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         // Render each stock card
@@ -424,7 +363,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Create table body
         const tbody = document.createElement('tbody');
         
-        // OPTIMIZATION: Use document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         // Create rows
@@ -531,7 +470,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function renderCardSkeletons() {
         const pageSize = pagination.pageSize;
         
-        // OPTIMIZATION: Use document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         for (let i = 0; i < Math.min(pageSize, 12); i++) {
@@ -584,7 +523,7 @@ document.addEventListener('DOMContentLoaded', function() {
         // Create table body
         const tbody = document.createElement('tbody');
         
-        // OPTIMIZATION: Use document fragment for better performance
+        // Use document fragment for better performance
         const fragment = document.createDocumentFragment();
         
         // Create rows
@@ -630,8 +569,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Number} pageSize - Items per page
      */
     function handlePageChange(page, pageSize) {
-        // OPTIMIZATION: Use cached version when available
-        loadStocksPageWithCache(page, pageSize);
+        loadStocksPage(page, pageSize);
     }
     
     /**
@@ -674,11 +612,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Boolean} loading - Whether data is loading
      */
     function setLoading(loading) {
-        // Update local state
         isLoading = loading;
-        
-        // CRITICAL FIX: Sync with global state
-        window.stockAppState.isLoading = loading;
         
         // Update loading indicator
         document.body.classList.toggle('loading', loading);
@@ -704,11 +638,7 @@ document.addEventListener('DOMContentLoaded', function() {
     function switchView(view) {
         if (currentView === view) return;
         
-        // Update local state
         currentView = view;
-        
-        // CRITICAL FIX: Sync with global state
-        window.stockAppState.currentView = view;
         
         // Update active button
         cardViewButton.classList.toggle('active', view === 'card');
@@ -718,8 +648,8 @@ document.addEventListener('DOMContentLoaded', function() {
         stockCardsContainer.style.display = view === 'card' ? 'grid' : 'none';
         stockTableContainer.style.display = view === 'table' ? 'block' : 'none';
         
-        // Render current stocks in new view
-        renderStocks(currentStocks);
+        // Render current stocks in new view with repaint fix
+        renderStocksWithRepaint(currentStocks);
     }
     
     /**
@@ -735,18 +665,11 @@ document.addEventListener('DOMContentLoaded', function() {
             delete activeFilters.search;
         }
         
-        // CRITICAL FIX: Sync with global state
-        window.stockAppState.activeFilters = activeFilters;
-        
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // FIX: Mark that a filter refresh is pending
-        pendingFilterRefresh = true;
-        window.stockAppState.pendingFilterRefresh = true;
-        
-        // OPTIMIZATION: Use cached version when available
-        loadStocksPageWithCache(1, pagination.pageSize);
+        // Load stocks with new filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -780,20 +703,13 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // CRITICAL FIX: Sync with global state
-        window.stockAppState.activeFilters = activeFilters;
-        
         console.log('Active filters after toggle:', activeFilters);
         
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // FIX: Mark that a filter refresh is pending
-        pendingFilterRefresh = true;
-        window.stockAppState.pendingFilterRefresh = true;
-        
-        // FIX: Always load stocks immediately without debounce
-        loadStocksPageWithCache(1, pagination.pageSize);
+        // Load stocks with new filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
@@ -826,28 +742,21 @@ document.addEventListener('DOMContentLoaded', function() {
             }
         }
         
-        // CRITICAL FIX: Sync with global state
-        window.stockAppState.activeFilters = activeFilters;
-        
         console.log('Active presets after toggle:', activeFilters.preset);
         
         // Reset to first page and apply filters
         pagination.goToPage(1);
         
-        // FIX: Mark that a filter refresh is pending
-        pendingFilterRefresh = true;
-        window.stockAppState.pendingFilterRefresh = true;
-        
-        // FIX: Always load stocks immediately without debounce
-        loadStocksPageWithCache(1, pagination.pageSize);
+        // Load stocks with new filters
+        loadStocksPage(1, pagination.pageSize);
     }
     
     /**
      * Handle resize
      */
     function handleResize() {
-        // Refresh current view
-        renderStocks(currentStocks);
+        // Refresh current view with repaint fix
+        renderStocksWithRepaint(currentStocks);
     }
     
     /**
@@ -909,11 +818,6 @@ document.addEventListener('DOMContentLoaded', function() {
             timeout = setTimeout(() => func.apply(this, args), wait);
         };
     }
-    
-    // OPTIMIZATION: Create debounced version of loadStocksPage
-    const debouncedLoadStocksPage = debounce((page, pageSize) => {
-        loadStocksPageWithCache(page, pageSize);
-    }, 300);
     
     /**
      * Convert frontend filter values to backend API parameters
@@ -1086,84 +990,32 @@ document.addEventListener('DOMContentLoaded', function() {
         });
     }
     
-    /**
-     * OPTIMIZATION: Generate cache key from filters and pagination
-     * @param {Number} page - Page number
-     * @param {Number} pageSize - Items per page
-     * @param {Object} filters - Active filters
-     * @returns {String} Cache key
-     */
-    function generateCacheKey(page, pageSize, filters) {
-        return JSON.stringify({
-            page,
-            pageSize,
-            filters
-        });
-    }
-    
-    /**
-     * OPTIMIZATION: Check cache for results
-     * @param {String} cacheKey - Cache key
-     * @returns {Object|null} Cached result or null
-     */
-    function checkCache(cacheKey) {
-        if (!resultsCache.has(cacheKey)) {
-            return null;
+    // CRITICAL FIX: Add CSS for force-repaint class
+    const style = document.createElement('style');
+    style.textContent = `
+        .force-repaint {
+            animation: force-repaint-keyframes 0.001s;
         }
-        
-        const { timestamp, data } = resultsCache.get(cacheKey);
-        const now = Date.now();
-        
-        // Check if cache is expired
-        if (now - timestamp > CACHE_DURATION) {
-            resultsCache.delete(cacheKey);
-            return null;
+        @keyframes force-repaint-keyframes {
+            0% { opacity: 0.99999; }
+            100% { opacity: 1; }
         }
-        
-        return data;
-    }
+    `;
+    document.head.appendChild(style);
     
-    /**
-     * OPTIMIZATION: Cache results
-     * @param {String} cacheKey - Cache key
-     * @param {Object} data - Data to cache
-     */
-    function cacheResults(cacheKey, data) {
-        // Limit cache size
-        if (resultsCache.size >= CACHE_SIZE_LIMIT) {
-            // Remove oldest entry
-            const oldestKey = Array.from(resultsCache.keys())[0];
-            resultsCache.delete(oldestKey);
-        }
-        
-        resultsCache.set(cacheKey, {
-            timestamp: Date.now(),
-            data
-        });
-    }
-    
-    // CRITICAL FIX: Add a global refresh function for debugging
+    // CRITICAL FIX: Add a manual refresh button for debugging
     window.refreshStocks = function() {
         console.log('Manual refresh triggered');
-        pendingFilterRefresh = true;
-        window.stockAppState.pendingFilterRefresh = true;
-        loadStocksPageWithCache(pagination.currentPage, pagination.pageSize);
+        renderStocksWithRepaint(currentStocks);
     };
     
-    // CRITICAL FIX: Add a retry mechanism for failed loads
-    window.addEventListener('error', function(event) {
-        if (event.target.tagName === 'IMG' || event.target.tagName === 'SCRIPT') {
-            console.error('Resource failed to load:', event.target.src);
-        }
-    });
-    
-    // CRITICAL FIX: Add a periodic check to ensure UI is in sync with state
+    // CRITICAL FIX: Add a periodic check to ensure UI is in sync with data
     setInterval(function() {
-        if (window.stockAppState.currentStocks.length > 0 && 
+        if (currentStocks.length > 0 && 
             document.querySelectorAll('.stock-card, .stock-table tbody tr').length === 0 && 
-            !window.stockAppState.isLoading) {
-            console.log('Detected UI out of sync with state, forcing re-render');
-            renderStocks(window.stockAppState.currentStocks);
+            !isLoading) {
+            console.log('Detected UI out of sync with data, forcing re-render');
+            renderStocksWithRepaint(currentStocks);
         }
-    }, 5000);
+    }, 2000);
 });
