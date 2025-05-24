@@ -361,11 +361,14 @@ function loadStocksPage(page, pageSize) {
         pageSize: pageSize
     });
 
+    // Convert filter values to backend-expected parameters
+    const backendParams = convertFiltersToBackendParams(window.activeFilters);
+    
     // Add filter parameters
-    Object.entries(window.activeFilters).forEach(([key, value]) => {
+    Object.entries(backendParams).forEach(([key, value]) => {
         if (Array.isArray(value)) {
             value.forEach(v => params.append(key, v));
-        } else if (value) {
+        } else if (value !== undefined && value !== null) {
             params.append(key, value);
         }
     });
@@ -475,6 +478,111 @@ function loadStocksPage(page, pageSize) {
             
             throw error;
         });
+}
+
+/**
+ * Convert frontend filter values to backend parameters
+ * @param {Object} filters - Frontend filter values
+ * @returns {Object} Backend filter parameters
+ */
+function convertFiltersToBackendParams(filters) {
+    const backendParams = {};
+    
+    // Handle market cap filters
+    if (filters.market_cap) {
+        const marketCapValues = Array.isArray(filters.market_cap) ? filters.market_cap : [filters.market_cap];
+        
+        marketCapValues.forEach(value => {
+            switch (value) {
+                case 'large':
+                    backendParams.marketCapMin = 10000000000; // $10B+
+                    break;
+                case 'mid':
+                    backendParams.marketCapMin = 2000000000; // $2B
+                    backendParams.marketCapMax = 10000000000; // $10B
+                    break;
+                case 'small':
+                    backendParams.marketCapMin = 300000000; // $300M
+                    backendParams.marketCapMax = 2000000000; // $2B
+                    break;
+                case 'micro':
+                    backendParams.marketCapMax = 300000000; // $300M
+                    break;
+            }
+        });
+    }
+    
+    // Handle volume filters
+    if (filters.volume) {
+        const volumeValues = Array.isArray(filters.volume) ? filters.volume : [filters.volume];
+        
+        volumeValues.forEach(value => {
+            switch (value) {
+                case 'high':
+                    backendParams.volumeMin = 5000000; // $5M+
+                    break;
+                case 'medium':
+                    backendParams.volumeMin = 1000000; // $1M
+                    backendParams.volumeMax = 5000000; // $5M
+                    break;
+                case 'low':
+                    backendParams.volumeMax = 1000000; // $1M
+                    break;
+            }
+        });
+    }
+    
+    // Handle debt filters
+    if (filters.debt) {
+        const debtValues = Array.isArray(filters.debt) ? filters.debt : [filters.debt];
+        
+        debtValues.forEach(value => {
+            switch (value) {
+                case 'low':
+                    backendParams.debtMax = 0.5;
+                    break;
+                case 'medium':
+                    backendParams.debtMin = 0.5;
+                    backendParams.debtMax = 1.5;
+                    break;
+                case 'high':
+                    backendParams.debtMin = 1.5;
+                    break;
+            }
+        });
+    }
+    
+    // Handle valuation filters
+    if (filters.valuation) {
+        const valuationValues = Array.isArray(filters.valuation) ? filters.valuation : [filters.valuation];
+        
+        valuationValues.forEach(value => {
+            switch (value) {
+                case 'undervalued':
+                    backendParams.peMax = 15;
+                    break;
+                case 'fair':
+                    backendParams.peMin = 15;
+                    backendParams.peMax = 25;
+                    break;
+                case 'overvalued':
+                    backendParams.peMin = 25;
+                    break;
+            }
+        });
+    }
+    
+    // Handle preset filters
+    if (filters.preset) {
+        backendParams.preset = filters.preset;
+    }
+    
+    // Handle search
+    if (filters.search) {
+        backendParams.search = filters.search;
+    }
+    
+    return backendParams;
 }
 
 /**
