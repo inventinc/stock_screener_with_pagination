@@ -7,6 +7,13 @@
  * - Optimized data loading
  * - Responsive design for all devices
  */
+
+// Export key functions to global scope for accessibility
+window.toggleFilter = toggleFilter;
+window.togglePreset = togglePreset;
+window.loadStocksPage = loadStocksPage;
+window.activeFilters = {};
+
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
     const stockCardsContainer = document.getElementById('stock-cards-container');
@@ -23,14 +30,14 @@ document.addEventListener('DOMContentLoaded', function() {
     const filtersContent = document.getElementById('filters-content');
     const cardViewButton = document.getElementById('card-view-button');
     const tableViewButton = document.getElementById('table-view-button');
-    
+
     // State
     let currentView = 'card'; // 'card' or 'table'
-    let activeFilters = {};
+    window.activeFilters = {}; // Moved to global scope
     let currentStocks = [];
     let totalItems = 0;
     let isLoading = false;
-    
+
     // Initialize pagination controls
     const pagination = new PaginationControls({
         container: paginationContainer,
@@ -39,77 +46,82 @@ document.addEventListener('DOMContentLoaded', function() {
         currentPage: 1,
         onPageChange: handlePageChange
     });
-    
+
     // Initialize tooltip
     const tooltip = new Tooltip();
-    
+
     // Initialize app
     initApp();
-    
+
     /**
      * Initialize the application
      */
     function initApp() {
         // Set up event listeners
         setupEventListeners();
-        
+
         // Load initial data
         loadInitialData();
-        
+
         // Update API status
         updateApiStatus(true);
     }
-    
+
     /**
      * Set up event listeners
      */
     function setupEventListeners() {
         // Filters toggle
-        filtersToggle.addEventListener('click', toggleFilters);
-        
+        if (filtersToggle) {
+            filtersToggle.addEventListener('click', toggleFilters);
+        }
+
         // View buttons
-        cardViewButton.addEventListener('click', () => switchView('card'));
-        tableViewButton.addEventListener('click', () => switchView('table'));
-        
+        if (cardViewButton && tableViewButton) {
+            cardViewButton.addEventListener('click', () => switchView('card'));
+            tableViewButton.addEventListener('click', () => switchView('table'));
+        }
+
         // Search input
-        searchInput.addEventListener('input', debounce(handleSearch, 300));
-        
+        if (searchInput) {
+            searchInput.addEventListener('input', debounce(handleSearch, 300));
+        }
+
         // Filter buttons
         document.querySelectorAll('.filter-button').forEach(button => {
             button.addEventListener('click', () => toggleFilter(button));
         });
-        
+
         // Preset buttons
         document.querySelectorAll('.preset-button').forEach(button => {
             button.addEventListener('click', () => togglePreset(button));
         });
-        
+
         // Window resize
         window.addEventListener('resize', debounce(handleResize, 200));
     }
-    
+
     /**
      * Load initial data
      */
     function loadInitialData() {
         // Show loading state
         setLoading(true);
-        
+
         // Get pagination parameters from URL or defaults
         const urlParams = new URLSearchParams(window.location.search);
         const page = parseInt(urlParams.get('page')) || 1;
         const pageSize = parseInt(urlParams.get('pageSize')) || 50;
-        
+
         // Update pagination control
         pagination.currentPage = page;
         pagination.pageSize = pageSize;
-        
+
         // Load stats
         fetch('/api/stats')
             .then(response => response.json())
             .then(stats => {
                 updateStats(stats);
-                
                 // Load first page of stocks
                 return loadStocksPage(page, pageSize);
             })
@@ -119,71 +131,157 @@ document.addEventListener('DOMContentLoaded', function() {
                 setLoading(false);
             });
     }
-    
+
     /**
-     * Load a specific page of stocks
-     * @param {Number} page - Page number
-     * @param {Number} pageSize - Items per page
-     * @returns {Promise} Promise that resolves with loaded stocks
+     * Handle page change
      */
-    function loadStocksPage(page, pageSize) {
-        setLoading(true);
-        
-        // Build query parameters
-        const params = new URLSearchParams({
-            page: page,
-            pageSize: pageSize
-        });
-        
-        // Add filter parameters
-        Object.entries(activeFilters).forEach(([key, value]) => {
-            if (Array.isArray(value)) {
-                value.forEach(v => params.append(key, v));
-            } else if (value) {
-                params.append(key, value);
-            }
-        });
-        
-        // Fetch stocks from API
-        return fetch(`/api/stocks?${params.toString()}`)
-            .then(response => {
-                if (!response.ok) {
-                    throw new Error(`API error: ${response.status} ${response.statusText}`);
-                }
-                return response.json();
-            })
-            .then(data => {
-                if (!data || !data.stocks || !Array.isArray(data.stocks)) {
-                    throw new Error('Invalid API response format');
-                }
-                
-                // Process stocks data
-                const processedStocks = processStocksData(data.stocks);
-                
-                // Update state
-                currentStocks = processedStocks;
-                totalItems = data.pagination ? data.pagination.total : processedStocks.length;
-                
-                // Update pagination
-                pagination.update(totalItems, page);
-                
-                // Render stocks
-                renderStocks(processedStocks);
-                
-                // Update API status
-                updateApiStatus(true);
-                setLoading(false);
-                
-                return processedStocks;
-            })
-            .catch(error => {
-                console.error('Error loading stocks:', error);
-                updateApiStatus(false);
-                setLoading(false);
-                throw error;
-            });
+    function handlePageChange(page, pageSize) {
+        loadStocksPage(page, pageSize);
     }
-    
+
+    /**
+     * Switch view between card and table
+     */
+    function switchView(view) {
+        currentView = view;
+        
+        // Update active state of view buttons
+        if (cardViewButton && tableViewButton) {
+            if (view === 'card') {
+                cardViewButton.classList.add('active');
+                tableViewButton.classList.remove('active');
+            } else {
+                cardViewButton.classList.remove('active');
+                tableViewButton.classList.add('active');
+            }
+        }
+        
+        // Re-render stocks with current view
+        renderStocks(currentStocks);
+    }
+
+    /**
+     * Toggle filters panel
+     */
+    function toggleFilters() {
+        if (filtersContent) {
+            filtersContent.classList.toggle('collapsed');
+        }
+        if (filtersToggle) {
+            const toggleIcon = filtersToggle.querySelector('.filters-toggle');
+            if (toggleIcon) {
+                toggleIcon.classList.toggle('collapsed');
+            }
+        }
+    }
+
+    /**
+     * Handle search input
+     */
+    function handleSearch() {
+        if (searchInput) {
+            const searchTerm = searchInput.value.trim();
+            
+            // Update active filters
+            if (searchTerm) {
+                window.activeFilters.search = searchTerm;
+            } else {
+                delete window.activeFilters.search;
+            }
+            
+            // Reload data with search filter
+            loadStocksPage(1, pagination.pageSize);
+        }
+    }
+
+    /**
+     * Handle window resize
+     */
+    function handleResize() {
+        // Re-render stocks to adjust card heights
+        if (currentView === 'card') {
+            renderStocks(currentStocks);
+        }
+    }
+
+    /**
+     * Set loading state
+     */
+    function setLoading(loading) {
+        isLoading = loading;
+        
+        // Update loading UI
+        const loadingProgressBar = document.querySelector('.loading-progress-bar');
+        const loadingProgressText = document.querySelector('.loading-progress-text');
+        
+        if (loadingProgressBar && loadingProgressText) {
+            if (loading) {
+                loadingProgressBar.style.display = 'block';
+                loadingProgressText.style.display = 'block';
+                
+                // Animate progress bar
+                const progressInner = loadingProgressBar.querySelector('.progress-inner');
+                if (progressInner) {
+                    progressInner.style.width = '0%';
+                    setTimeout(() => {
+                        progressInner.style.width = '70%';
+                    }, 100);
+                }
+            } else {
+                // Complete progress animation
+                const progressInner = loadingProgressBar.querySelector('.progress-inner');
+                if (progressInner) {
+                    progressInner.style.width = '100%';
+                }
+                
+                // Hide loading UI after animation
+                setTimeout(() => {
+                    loadingProgressBar.style.display = 'none';
+                    loadingProgressText.style.display = 'none';
+                }, 300);
+            }
+        }
+    }
+
+    /**
+     * Update API status indicator
+     */
+    function updateApiStatus(connected) {
+        if (apiStatusIndicator && apiStatusText) {
+            if (connected) {
+                apiStatusIndicator.classList.remove('disconnected');
+                apiStatusIndicator.classList.add('connected');
+                apiStatusText.textContent = 'connected';
+            } else {
+                apiStatusIndicator.classList.remove('connected');
+                apiStatusIndicator.classList.add('disconnected');
+                apiStatusText.textContent = 'disconnected';
+            }
+        }
+    }
+
+    /**
+     * Update stats display
+     */
+    function updateStats(stats) {
+        if (totalStocksElement) {
+            totalStocksElement.textContent = stats.total.toLocaleString();
+        }
+        
+        if (nyseStocksElement) {
+            nyseStocksElement.textContent = stats.nyse.toLocaleString();
+        }
+        
+        if (nasdaqStocksElement) {
+            nasdaqStocksElement.textContent = stats.nasdaq.toLocaleString();
+        }
+        
+        if (lastUpdatedElement && stats.lastUpdated) {
+            const date = new Date(stats.lastUpdated);
+            lastUpdatedElement.textContent = `${date.toLocaleDateString()}, ${date.toLocaleTimeString()}`;
+        }
+    }
+
     /**
      * Process stocks data
      * @param {Array} stocks - Raw stocks data
@@ -204,7 +302,7 @@ document.addEventListener('DOMContentLoaded', function() {
             return stock;
         });
     }
-    
+
     /**
      * Render stocks in current view
      * @param {Array} stocks - Stocks to render
@@ -216,334 +314,295 @@ document.addEventListener('DOMContentLoaded', function() {
             renderTableView(stocks);
         }
     }
-    
+
     /**
-     * Toggle filter
-     * @param {HTMLElement} button - Filter button element
-     */
-    function toggleFilter(button) {
-        // Get filter data
-        const filter = button.dataset.filter;
-        const value = button.dataset.value;
-        
-        // Toggle active state
-        button.classList.toggle('active');
-        const isActive = button.classList.contains('active');
-        
-        // Update active filters
-        if (!activeFilters[filter]) {
-            activeFilters[filter] = [];
-        }
-        
-        if (isActive) {
-            // Add filter
-            if (!activeFilters[filter].includes(value)) {
-                activeFilters[filter].push(value);
-            }
-        } else {
-            // Remove filter
-            activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
-            
-            // Remove empty filter
-            if (activeFilters[filter].length === 0) {
-                delete activeFilters[filter];
-            }
-        }
-        
-        // Special case for reset button
-        if (button.dataset.action === 'reset-filters') {
-            // Clear all filters
-            document.querySelectorAll('.filter-button, .preset-button').forEach(btn => {
-                if (btn !== button) {
-                    btn.classList.remove('active');
-                }
-            });
-            
-            // Reset active filters
-            activeFilters = {};
-        }
-        
-        // Reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
-    }
-    
-    /**
-     * Toggle preset
-     * @param {HTMLElement} button - Preset button element
-     */
-    function togglePreset(button) {
-        // Get preset data
-        const preset = button.dataset.preset;
-        
-        // Toggle active state
-        button.classList.toggle('active');
-        const isActive = button.classList.contains('active');
-        
-        // Update active filters
-        if (isActive) {
-            // Add preset
-            activeFilters.preset = preset;
-            
-            // Deactivate other presets
-            document.querySelectorAll('.preset-button').forEach(btn => {
-                if (btn !== button) {
-                    btn.classList.remove('active');
-                }
-            });
-        } else {
-            // Remove preset
-            delete activeFilters.preset;
-        }
-        
-        // Reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
-    }
-    
-    /**
-     * Handle search input
-     */
-    function handleSearch() {
-        const searchValue = searchInput.value.trim();
-        
-        // Update active filters
-        if (searchValue) {
-            activeFilters.search = searchValue;
-        } else {
-            delete activeFilters.search;
-        }
-        
-        // Reload data with current filters
-        loadStocksPage(1, pagination.pageSize);
-    }
-    
-    /**
-     * Handle page change
-     * @param {Number} page - New page number
-     */
-    function handlePageChange(page) {
-        loadStocksPage(page, pagination.pageSize);
-    }
-    
-    /**
-     * Toggle filters visibility
-     */
-    function toggleFilters() {
-        filtersContent.classList.toggle('collapsed');
-        filtersToggle.querySelector('.filters-toggle').classList.toggle('collapsed');
-    }
-    
-    /**
-     * Switch view between card and table
-     * @param {String} view - View type ('card' or 'table')
-     */
-    function switchView(view) {
-        // Update state
-        currentView = view;
-        
-        // Update UI
-        if (view === 'card') {
-            cardViewButton.classList.add('active');
-            tableViewButton.classList.remove('active');
-            stockCardsContainer.style.display = 'grid';
-            stockTableContainer.style.display = 'none';
-        } else {
-            cardViewButton.classList.remove('active');
-            tableViewButton.classList.add('active');
-            stockCardsContainer.style.display = 'none';
-            stockTableContainer.style.display = 'block';
-        }
-        
-        // Render stocks
-        renderStocks(currentStocks);
-    }
-    
-    /**
-     * Update API status indicator
-     * @param {Boolean} connected - Whether API is connected
-     */
-    function updateApiStatus(connected) {
-        if (connected) {
-            apiStatusIndicator.classList.remove('disconnected');
-            apiStatusIndicator.classList.add('connected');
-            apiStatusText.textContent = 'connected';
-        } else {
-            apiStatusIndicator.classList.remove('connected');
-            apiStatusIndicator.classList.add('disconnected');
-            apiStatusText.textContent = 'disconnected';
-        }
-    }
-    
-    /**
-     * Update stats display
-     * @param {Object} stats - Stats data
-     */
-    function updateStats(stats) {
-        if (totalStocksElement) {
-            totalStocksElement.textContent = stats.total || 0;
-        }
-        if (nyseStocksElement) {
-            nyseStocksElement.textContent = stats.nyse || 0;
-        }
-        if (nasdaqStocksElement) {
-            nasdaqStocksElement.textContent = stats.nasdaq || 0;
-        }
-        if (lastUpdatedElement) {
-            lastUpdatedElement.textContent = formatDate(stats.lastUpdated || new Date());
-        }
-    }
-    
-    /**
-     * Set loading state
-     * @param {Boolean} loading - Whether app is loading
-     */
-    function setLoading(loading) {
-        isLoading = loading;
-        
-        // Update UI
-        const loadingBar = document.getElementById('loading-progress-bar');
-        const progressInner = document.getElementById('progress-inner');
-        const loadingText = document.getElementById('loading-progress-text');
-        
-        if (loading) {
-            if (loadingBar) loadingBar.style.display = 'block';
-            if (progressInner) progressInner.style.width = '70%';
-            if (loadingText) {
-                loadingText.style.display = 'block';
-                loadingText.textContent = 'Loading stocks...';
-            }
-        } else {
-            if (progressInner) {
-                progressInner.style.width = '100%';
-                setTimeout(() => {
-                    if (loadingBar) loadingBar.style.display = 'none';
-                    if (progressInner) progressInner.style.width = '0%';
-                }, 300);
-            }
-            if (loadingText) {
-                loadingText.style.display = 'none';
-            }
-        }
-    }
-    
-    /**
-     * Handle window resize
-     */
-    function handleResize() {
-        // Adjust UI for current window size
-        // (Add responsive adjustments if needed)
-    }
-    
-    /**
-     * Format currency value
-     * @param {Number} value - Value to format
-     * @returns {String} Formatted currency string
-     */
-    function formatCurrency(value) {
-        return '$' + value.toFixed(2);
-    }
-    
-    /**
-     * Format large number with suffix
-     * @param {Number} value - Value to format
-     * @returns {String} Formatted number string
-     */
-    function formatLargeNumber(value) {
-        if (value >= 1000000000000) {
-            return '$' + (value / 1000000000000).toFixed(2) + 'T';
-        } else if (value >= 1000000000) {
-            return '$' + (value / 1000000000).toFixed(2) + 'B';
-        } else if (value >= 1000000) {
-            return '$' + (value / 1000000).toFixed(2) + 'M';
-        } else if (value >= 1000) {
-            return '$' + (value / 1000).toFixed(2) + 'K';
-        } else {
-            return '$' + value.toFixed(2);
-        }
-    }
-    
-    /**
-     * Format date
-     * @param {Date|String} date - Date to format
-     * @returns {String} Formatted date string
-     */
-    function formatDate(date) {
-        if (!(date instanceof Date)) {
-            date = new Date(date);
-        }
-        
-        return date.toLocaleDateString() + ', ' + date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    }
-    
-    /**
-     * Debounce function
-     * @param {Function} func - Function to debounce
-     * @param {Number} wait - Wait time in milliseconds
-     * @returns {Function} Debounced function
+     * Debounce function to limit function calls
      */
     function debounce(func, wait) {
         let timeout;
-        return function() {
-            const context = this;
-            const args = arguments;
+        return function(...args) {
             clearTimeout(timeout);
-            timeout = setTimeout(() => {
-                func.apply(context, args);
-            }, wait);
+            timeout = setTimeout(() => func.apply(this, args), wait);
         };
     }
+});
+
+/**
+ * Load a specific page of stocks
+ * @param {Number} page - Page number
+ * @param {Number} pageSize - Items per page
+ * @returns {Promise} Promise that resolves with loaded stocks
+ */
+function loadStocksPage(page, pageSize) {
+    console.log("loadStocksPage called with page:", page, "pageSize:", pageSize);
+    console.log("Active filters:", window.activeFilters);
     
-    /**
-     * Tooltip class for showing tooltips
-     */
-    function Tooltip() {
-        const tooltipElement = document.getElementById('tooltip');
+    // Show loading state
+    const loadingProgressBar = document.querySelector('.loading-progress-bar');
+    const loadingProgressText = document.querySelector('.loading-progress-text');
+    
+    if (loadingProgressBar && loadingProgressText) {
+        loadingProgressBar.style.display = 'block';
+        loadingProgressText.style.display = 'block';
         
-        // Initialize tooltip
-        if (!tooltipElement) return;
-        
-        // Add event listeners
-        document.querySelectorAll('[title]').forEach(element => {
-            element.addEventListener('mouseenter', showTooltip);
-            element.addEventListener('mouseleave', hideTooltip);
-        });
-        
-        /**
-         * Show tooltip
-         * @param {Event} event - Mouse event
-         */
-        function showTooltip(event) {
-            const title = event.target.getAttribute('title');
-            if (!title) return;
-            
-            // Store original title and remove to prevent native tooltip
-            event.target.dataset.originalTitle = title;
-            event.target.removeAttribute('title');
-            
-            // Set tooltip content
-            tooltipElement.textContent = title;
-            
-            // Position tooltip
-            const rect = event.target.getBoundingClientRect();
-            tooltipElement.style.top = (rect.top - tooltipElement.offsetHeight - 10) + 'px';
-            tooltipElement.style.left = (rect.left + (rect.width / 2) - (tooltipElement.offsetWidth / 2)) + 'px';
-            
-            // Show tooltip
-            tooltipElement.style.display = 'block';
-        }
-        
-        /**
-         * Hide tooltip
-         * @param {Event} event - Mouse event
-         */
-        function hideTooltip(event) {
-            // Restore original title
-            if (event.target.dataset.originalTitle) {
-                event.target.setAttribute('title', event.target.dataset.originalTitle);
-                delete event.target.dataset.originalTitle;
-            }
-            
-            // Hide tooltip
-            tooltipElement.style.display = 'none';
+        // Animate progress bar
+        const progressInner = loadingProgressBar.querySelector('.progress-inner');
+        if (progressInner) {
+            progressInner.style.width = '0%';
+            setTimeout(() => {
+                progressInner.style.width = '70%';
+            }, 100);
         }
     }
-});
+
+    // Build query parameters
+    const params = new URLSearchParams({
+        page: page,
+        pageSize: pageSize
+    });
+
+    // Add filter parameters
+    Object.entries(window.activeFilters).forEach(([key, value]) => {
+        if (Array.isArray(value)) {
+            value.forEach(v => params.append(key, v));
+        } else if (value) {
+            params.append(key, value);
+        }
+    });
+
+    console.log("API request URL:", `/api/stocks?${params.toString()}`);
+
+    // Fetch stocks from API
+    return fetch(`/api/stocks?${params.toString()}`)
+        .then(response => {
+            if (!response.ok) {
+                throw new Error(`API error: ${response.status} ${response.statusText}`);
+            }
+            return response.json();
+        })
+        .then(data => {
+            console.log("API response:", data);
+            
+            if (!data || !data.stocks || !Array.isArray(data.stocks)) {
+                throw new Error('Invalid API response format');
+            }
+
+            // Process stocks data
+            const processedStocks = data.stocks.map(stock => {
+                // Format numbers for display
+                if (stock.price) {
+                    stock.formattedPrice = formatCurrency(stock.price);
+                }
+                if (stock.marketCap) {
+                    stock.formattedMarketCap = formatLargeNumber(stock.marketCap);
+                }
+                if (stock.avgDollarVolume) {
+                    stock.formattedVolume = formatLargeNumber(stock.avgDollarVolume);
+                }
+                return stock;
+            });
+
+            // Update state
+            const currentStocks = processedStocks;
+            const totalItems = data.pagination ? data.pagination.total : processedStocks.length;
+
+            // Update pagination
+            const paginationContainer = document.getElementById('pagination-container');
+            if (paginationContainer && window.PaginationControls) {
+                const pagination = new PaginationControls({
+                    container: paginationContainer,
+                    totalItems: totalItems,
+                    pageSize: pageSize,
+                    currentPage: page,
+                    onPageChange: (newPage, newPageSize) => loadStocksPage(newPage, newPageSize)
+                });
+                pagination.update(totalItems, page);
+            }
+
+            // Render stocks
+            if (currentStocks && currentStocks.length > 0) {
+                const currentView = document.getElementById('card-view-button').classList.contains('active') ? 'card' : 'table';
+                if (currentView === 'card') {
+                    renderCardView(currentStocks);
+                } else {
+                    renderTableView(currentStocks);
+                }
+            }
+
+            // Update API status
+            const apiStatusIndicator = document.getElementById('api-status-indicator');
+            const apiStatusText = document.getElementById('api-status-text');
+            if (apiStatusIndicator && apiStatusText) {
+                apiStatusIndicator.classList.remove('disconnected');
+                apiStatusIndicator.classList.add('connected');
+                apiStatusText.textContent = 'connected';
+            }
+
+            // Hide loading state
+            if (loadingProgressBar && loadingProgressText) {
+                // Complete progress animation
+                const progressInner = loadingProgressBar.querySelector('.progress-inner');
+                if (progressInner) {
+                    progressInner.style.width = '100%';
+                }
+                
+                // Hide loading UI after animation
+                setTimeout(() => {
+                    loadingProgressBar.style.display = 'none';
+                    loadingProgressText.style.display = 'none';
+                }, 300);
+            }
+
+            return processedStocks;
+        })
+        .catch(error => {
+            console.error('Error loading stocks:', error);
+            
+            // Update API status
+            const apiStatusIndicator = document.getElementById('api-status-indicator');
+            const apiStatusText = document.getElementById('api-status-text');
+            if (apiStatusIndicator && apiStatusText) {
+                apiStatusIndicator.classList.remove('connected');
+                apiStatusIndicator.classList.add('disconnected');
+                apiStatusText.textContent = 'disconnected';
+            }
+            
+            // Hide loading state
+            if (loadingProgressBar && loadingProgressText) {
+                loadingProgressBar.style.display = 'none';
+                loadingProgressText.style.display = 'none';
+            }
+            
+            throw error;
+        });
+}
+
+/**
+ * Toggle filter
+ * @param {HTMLElement} button - Filter button element
+ */
+function toggleFilter(button) {
+    console.log("toggleFilter called with button:", button);
+    
+    // Get filter data
+    const filter = button.dataset.filter;
+    const value = button.dataset.value;
+    
+    console.log("Filter:", filter, "Value:", value);
+    
+    // Toggle active state
+    button.classList.toggle('active');
+    const isActive = button.classList.contains('active');
+    
+    // Update active filters
+    if (!window.activeFilters[filter]) {
+        window.activeFilters[filter] = [];
+    }
+    
+    if (isActive) {
+        // Add filter
+        if (!window.activeFilters[filter].includes(value)) {
+            window.activeFilters[filter].push(value);
+        }
+    } else {
+        // Remove filter
+        window.activeFilters[filter] = window.activeFilters[filter].filter(v => v !== value);
+        // Remove empty filter
+        if (window.activeFilters[filter].length === 0) {
+            delete window.activeFilters[filter];
+        }
+    }
+    
+    // Special case for reset button
+    if (button.dataset.action === 'reset-filters') {
+        // Clear all filters
+        document.querySelectorAll('.filter-button, .preset-button').forEach(btn => {
+            if (btn !== button) {
+                btn.classList.remove('active');
+            }
+        });
+        
+        // Reset active filters
+        window.activeFilters = {};
+    }
+    
+    console.log("Updated activeFilters:", window.activeFilters);
+    
+    // Reload data with current filters
+    loadStocksPage(1, 50);
+}
+
+/**
+ * Toggle preset
+ * @param {HTMLElement} button - Preset button element
+ */
+function togglePreset(button) {
+    console.log("togglePreset called with button:", button);
+    
+    // Get preset data
+    const preset = button.dataset.preset;
+    
+    console.log("Preset:", preset);
+    
+    // Toggle active state
+    button.classList.toggle('active');
+    const isActive = button.classList.contains('active');
+    
+    // Update active filters
+    if (isActive) {
+        // Add preset
+        window.activeFilters.preset = preset;
+        
+        // Deactivate other presets
+        document.querySelectorAll('.preset-button').forEach(btn => {
+            if (btn !== button) {
+                btn.classList.remove('active');
+            }
+        });
+    } else {
+        // Remove preset
+        delete window.activeFilters.preset;
+    }
+    
+    console.log("Updated activeFilters:", window.activeFilters);
+    
+    // Reload data with current filters
+    loadStocksPage(1, 50);
+}
+
+/**
+ * Format currency value
+ * @param {Number} value - Value to format
+ * @returns {String} Formatted currency
+ */
+function formatCurrency(value) {
+    if (value === undefined || value === null) return 'N/A';
+    
+    return new Intl.NumberFormat('en-US', {
+        style: 'currency',
+        currency: 'USD',
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(value);
+}
+
+/**
+ * Format large number with suffix (K, M, B, T)
+ * @param {Number} value - Value to format
+ * @returns {String} Formatted number
+ */
+function formatLargeNumber(value) {
+    if (value === undefined || value === null) return 'N/A';
+    
+    if (value >= 1e12) {
+        return '$' + (value / 1e12).toFixed(2) + 'T';
+    } else if (value >= 1e9) {
+        return '$' + (value / 1e9).toFixed(2) + 'B';
+    } else if (value >= 1e6) {
+        return '$' + (value / 1e6).toFixed(2) + 'M';
+    } else if (value >= 1e3) {
+        return '$' + (value / 1e3).toFixed(2) + 'K';
+    } else {
+        return '$' + value.toFixed(2);
+    }
+}
