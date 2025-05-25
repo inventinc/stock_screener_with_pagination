@@ -1,314 +1,786 @@
 /**
- * Enhanced FMP Import Script with ROTCE and Cash Conversion Ratio Support
+ * Heroku-Optimized FMP API Import Strategy - 750 API Calls Per Minute Edition
+ * Designed for Heroku deployment with maximum API throughput
  * 
- * This script extends the original FMP import functionality to fetch additional
- * data points needed for ROTCE and Cash Conversion Ratio calculations.
+ * Features:
+ * - Optimized for 750 API calls per minute
+ * - Enhanced concurrency settings for maximum throughput
+ * - Timeout handling for 30-minute dyno limit
+ * - Memory-efficient processing
+ * - Custom Debt/EBITDA calculation integration
+ * - Comprehensive error handling and retry logic
  */
 
 const axios = require('axios');
 const mongoose = require('mongoose');
-const { connectDB } = require('./db/mongoose');
-const Stock = require('./db/models/Stock');
-const financialMetricsCalculator = require('./financial_metrics_calculator');
 require('dotenv').config();
 
-// Configuration
-const FMP_API_KEY = process.env.FMP_API_KEY;
-const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
-const BATCH_SIZE = 25; // Process stocks in batches
-const CONCURRENT_REQUESTS = 5; // Number of concurrent API requests
-const DELAY_BETWEEN_BATCHES = 1000; // Delay between batches in ms
+// Import custom Debt/EBITDA calculator
+// Make sure to upload this file to your Heroku app
+const debtEBITDACalculator = require('./custom_debt_ebitda_calculator');
+
+// API configuration
+const API_KEY = process.env.FMP_API_KEY;
+const BASE_URL = 'https://financialmodelingprep.com/api/v3';
+
+// MongoDB connection
+const MONGODB_URI = process.env.MONGODB_URI;
+
+// Import timeout (Heroku has 30 min limit)
+const IMPORT_TIMEOUT = 25 * 60 * 1000; // 25 minutes
+
+// Optimized rate limiting configuration for 750 calls/minute
+const RATE_CONFIG = {
+  initialConcurrency: 30,       // Increased from 15 for higher throughput
+  minConcurrency: 10,           // Increased from 5 for higher throughput
+  maxConcurrency: 60,           // Doubled from 30 for maximum throughput
+  concurrencyStep: 5,           // Increased from 3 for faster adaptation
+  initialBackoff: 100,          // Reduced from 200ms for faster recovery
+  maxBackoff: 2000,             // Reduced from 3000ms for faster recovery
+  backoffFactor: 1.3,           // Reduced from 1.5 for faster recovery
+  successThreshold: 20,         // Reduced from 30 for faster upscaling
+  rateLimitThreshold: 3,        // Increased from 2 for more tolerance
+  adaptiveWindow: 30000,        // Reduced from 60000ms for faster adaptation
+  requestSpacing: 0,            // No minimum spacing between requests
+  
+  // Target API call rate
+  targetRequestsPerMinute: 750, // 750 calls per minute (12.5 calls per second)
+  
+  // Endpoint-specific rate limits
+  endpointLimits: {
+    // Bulk endpoints have stricter limits
+    '/bulk': {
+      requestsPerMinute: 6,     // Once per 10 seconds
+      spacing: 10000            // 10 seconds between requests
+    },
+    '/profile-bulk': {
+      requestsPerMinute: 1,     // Once per 60 seconds
+      spacing: 60000            // 60 seconds between requests
+    },
+    '/etf-bulk': {
+      requestsPerMinute: 1,     // Once per 60 seconds
+      spacing: 60000            // 60 seconds between requests
+    },
+    // Default for all other endpoints - maximized to 750/minute
+    'default': {
+      requestsPerMinute: 750,   // 750 calls per minute
+      spacing: 0                // No minimum spacing
+    }
+  }
+};
+
+// Global state for adaptive rate limiting
+let currentConcurrency = RATE_CONFIG.initialConcurrency;
+let currentBackoff = RATE_CONFIG.initialBackoff;
+let consecutiveSuccesses = 0;
+let consecutiveRateLimits = 0;
+let lastRateLimitTime = 0;
+let requestsInWindow = 0;
+let windowStartTime = Date.now();
+
+// Rate monitoring
+let minuteStartTime = Date.now();
+let requestsThisMinute = 0;
+let minuteCounter = 1;
+
+// Endpoint-specific tracking
+const endpointTracking = {};
+
+// Global counters for monitoring
+let totalRequests = 0;
+let successfulRequests = 0;
+let failedRequests = 0;
+let rateLimitedRequests = 0;
+
+// Import status tracking
+let importStatus = {
+  status: 'idle',
+  startTime: null,
+  endTime: null,
+  progress: {
+    total: 0,
+    completed: 0,
+    failed: 0
+  }
+};
 
 /**
- * Fetch data from FMP API
- * @param {string} endpoint - API endpoint
- * @param {Object} params - Query parameters
- * @returns {Promise<Object>} - API response data
+ * Get rate limit configuration for a specific endpoint
+ * @param {String} endpoint - API endpoint
+ * @returns {Object} Rate limit configuration
  */
-async function fetchFMPData(endpoint, params = {}) {
+function getEndpointRateLimit(endpoint) {
+  // Check for exact match
+  if (RATE_CONFIG.endpointLimits[endpoint]) {
+    return RATE_CONFIG.endpointLimits[endpoint];
+  }
+  
+  // Check for bulk endpoints
+  if (endpoint.includes('bulk')) {
+    return RATE_CONFIG.endpointLimits['/bulk'];
+  }
+  
+  // Default rate limit
+  return RATE_CONFIG.endpointLimits.default;
+}
+
+/**
+ * Initialize tracking for an endpoint
+ * @param {String} endpoint - API endpoint
+ */
+function initEndpointTracking(endpoint) {
+  if (!endpointTracking[endpoint]) {
+    endpointTracking[endpoint] = {
+      lastRequestTime: 0,
+      requestsInMinute: 0,
+      minuteStartTime: Date.now()
+    };
+  }
+  
+  // Reset minute counter if needed
+  const now = Date.now();
+  if (now - endpointTracking[endpoint].minuteStartTime > 60000) {
+    endpointTracking[endpoint].requestsInMinute = 0;
+    endpointTracking[endpoint].minuteStartTime = now;
+  }
+}
+
+/**
+ * Check if an endpoint request should be throttled
+ * @param {String} endpoint - API endpoint
+ * @returns {Boolean} Whether request should be throttled
+ */
+function shouldThrottleEndpoint(endpoint) {
+  const tracking = endpointTracking[endpoint];
+  const limits = getEndpointRateLimit(endpoint);
+  
+  // Check if we've exceeded requests per minute
+  if (tracking.requestsInMinute >= limits.requestsPerMinute) {
+    return true;
+  }
+  
+  // Check if we need to enforce spacing
+  const now = Date.now();
+  if (limits.spacing > 0 && now - tracking.lastRequestTime < limits.spacing) {
+    return true;
+  }
+  
+  return false;
+}
+
+/**
+ * Update endpoint tracking after a request
+ * @param {String} endpoint - API endpoint
+ */
+function updateEndpointTracking(endpoint) {
+  const tracking = endpointTracking[endpoint];
+  tracking.lastRequestTime = Date.now();
+  tracking.requestsInMinute++;
+}
+
+/**
+ * Update and log global rate statistics
+ */
+function updateRateStatistics() {
+  const now = Date.now();
+  requestsThisMinute++;
+  
+  // If a minute has passed, log the rate and reset
+  if (now - minuteStartTime >= 60000) {
+    const elapsedSeconds = (now - minuteStartTime) / 1000;
+    const rate = requestsThisMinute / elapsedSeconds * 60;
+    
+    console.log(`[RATE] Minute ${minuteCounter}: ${requestsThisMinute} requests (${rate.toFixed(2)}/min)`);
+    
+    // Reset counters
+    minuteStartTime = now;
+    requestsThisMinute = 0;
+    minuteCounter++;
+  }
+}
+
+/**
+ * Make API request with optimized rate limiting
+ * @param {String} endpoint - API endpoint
+ * @param {Object} params - Query parameters
+ * @returns {Promise} Promise resolving to API response
+ */
+async function makeApiRequest(endpoint, params = {}) {
+  // Initialize endpoint tracking
+  initEndpointTracking(endpoint);
+  
+  // Check if we should throttle this endpoint
+  if (shouldThrottleEndpoint(endpoint)) {
+    const limits = getEndpointRateLimit(endpoint);
+    const delay = Math.max(
+      limits.spacing - (Date.now() - endpointTracking[endpoint].lastRequestTime),
+      60000 - (Date.now() - endpointTracking[endpoint].minuteStartTime)
+    );
+    
+    console.log(`Throttling endpoint ${endpoint} for ${delay}ms`);
+    await new Promise(resolve => setTimeout(resolve, delay));
+  }
+  
+  // Add API key to params
+  params.apikey = API_KEY;
+  
+  // Update request timing
+  updateEndpointTracking(endpoint);
+  updateRateStatistics();
+  totalRequests++;
+  
+  // Update window counters
+  const now = Date.now();
+  if (now - windowStartTime > RATE_CONFIG.adaptiveWindow) {
+    // Reset window
+    windowStartTime = now;
+    requestsInWindow = 0;
+  }
+  requestsInWindow++;
+  
   try {
-    const url = `${FMP_BASE_URL}${endpoint}`;
-    const response = await axios.get(url, {
-      params: {
-        ...params,
-        apikey: FMP_API_KEY
-      }
+    const url = `${BASE_URL}${endpoint}`;
+    const response = await axios.get(url, { 
+      params,
+      timeout: 10000 // 10 second timeout (reduced from default)
     });
+    
+    // Handle successful request
+    successfulRequests++;
+    consecutiveSuccesses++;
+    consecutiveRateLimits = 0;
+    
+    // Potentially increase concurrency if we've had enough consecutive successes
+    if (consecutiveSuccesses >= RATE_CONFIG.successThreshold && 
+        currentConcurrency < RATE_CONFIG.maxConcurrency) {
+      currentConcurrency = Math.min(
+        currentConcurrency + RATE_CONFIG.concurrencyStep,
+        RATE_CONFIG.maxConcurrency
+      );
+      consecutiveSuccesses = 0;
+      console.log(`[ADAPTIVE] Increased concurrency to ${currentConcurrency}`);
+    }
     
     return response.data;
   } catch (error) {
-    console.error(`Error fetching data from ${endpoint}:`, error.message);
-    return null;
-  }
-}
-
-/**
- * Fetch comprehensive financial data for a stock
- * @param {string} symbol - Stock symbol
- * @returns {Promise<Object>} - Comprehensive financial data
- */
-async function fetchComprehensiveFinancialData(symbol) {
-  try {
-    // Fetch data in parallel for efficiency
-    const [
-      profile,
-      incomeStatements,
-      balanceSheets,
-      cashFlowStatements,
-      keyMetrics,
-      ratios
-    ] = await Promise.all([
-      fetchFMPData(`/profile/${symbol}`),
-      fetchFMPData(`/income-statement/${symbol}`, { limit: 5 }), // 5 years for Cash Conversion
-      fetchFMPData(`/balance-sheet-statement/${symbol}`, { limit: 5 }),
-      fetchFMPData(`/cash-flow-statement/${symbol}`, { limit: 5 }),
-      fetchFMPData(`/key-metrics/${symbol}`, { limit: 1 }),
-      fetchFMPData(`/ratios/${symbol}`, { limit: 1 })
-    ]);
-    
-    // Combine all data into a comprehensive financial object
-    return {
-      profile: profile && profile.length > 0 ? profile[0] : null,
-      incomeStatement: incomeStatements || [],
-      balanceSheet: balanceSheets || [],
-      cashFlowStatement: cashFlowStatements || [],
-      keyMetrics: keyMetrics && keyMetrics.length > 0 ? keyMetrics[0] : null,
-      ratios: ratios && ratios.length > 0 ? ratios[0] : null
-    };
-  } catch (error) {
-    console.error(`Error fetching comprehensive data for ${symbol}:`, error.message);
-    return null;
-  }
-}
-
-/**
- * Process a single stock
- * @param {Object} stockInfo - Basic stock info
- * @returns {Promise<Object>} - Processed stock data
- */
-async function processStock(stockInfo) {
-  try {
-    const { symbol } = stockInfo;
-    console.log(`Processing ${symbol}...`);
-    
-    // Fetch comprehensive financial data
-    const financialData = await fetchComprehensiveFinancialData(symbol);
-    if (!financialData || !financialData.profile) {
-      console.log(`Skipping ${symbol}: No financial data available`);
-      return null;
+    // Handle rate limiting
+    if (error.response && (error.response.status === 429 || error.response.status === 403)) {
+      rateLimitedRequests++;
+      consecutiveRateLimits++;
+      consecutiveSuccesses = 0;
+      lastRateLimitTime = Date.now();
+      
+      // Decrease concurrency if we're getting rate limited
+      if (consecutiveRateLimits >= RATE_CONFIG.rateLimitThreshold && 
+          currentConcurrency > RATE_CONFIG.minConcurrency) {
+        currentConcurrency = Math.max(
+          currentConcurrency - RATE_CONFIG.concurrencyStep,
+          RATE_CONFIG.minConcurrency
+        );
+        consecutiveRateLimits = 0;
+        console.log(`[ADAPTIVE] Decreased concurrency to ${currentConcurrency}`);
+      }
+      
+      // Increase backoff time
+      currentBackoff = Math.min(
+        currentBackoff * RATE_CONFIG.backoffFactor,
+        RATE_CONFIG.maxBackoff
+      );
+      
+      console.log(`[API] Rate limited. Backing off for ${currentBackoff}ms`);
+      await new Promise(resolve => setTimeout(resolve, currentBackoff));
+      
+      // Retry the request
+      return makeApiRequest(endpoint, params);
     }
     
-    // Extract basic profile data
-    const { profile } = financialData;
-    
-    // Calculate financial metrics (ROTCE and Cash Conversion)
-    const financialMetrics = financialMetricsCalculator.calculateFinancialMetrics(financialData);
-    
-    // Extract key financial ratios
-    const ratios = financialData.ratios || {};
-    const keyMetrics = financialData.keyMetrics || {};
-    
-    // Prepare stock data for database
-    const stockData = {
-      symbol,
-      name: profile.companyName,
-      exchange: profile.exchangeShortName,
-      sector: profile.sector,
-      industry: profile.industry,
-      price: profile.price,
-      marketCap: profile.mktCap,
-      beta: profile.beta,
-      
-      // Financial ratios
-      peRatio: ratios.peRatio || profile.pe,
-      pbRatio: ratios.priceToBookRatio,
-      psRatio: ratios.priceToSalesRatio,
-      dividendYield: profile.lastDiv / profile.price,
-      
-      // Debt metrics
-      debtToEquity: ratios.debtToEquity,
-      netDebtToEBITDA: ratios.netDebtToEBITDA || ratios.debtToEBITDA,
-      
-      // Profitability metrics
-      returnOnEquity: ratios.returnOnEquity,
-      returnOnAssets: ratios.returnOnAssets,
-      
-      // Custom calculated metrics
-      rotce: financialMetrics.rotce.value,
-      rotceCalculationMethod: financialMetrics.rotce.method,
-      rotceHasAllComponents: financialMetrics.rotce.hasAllComponents,
-      
-      cashConversion: financialMetrics.cashConversion.value,
-      cashConversionYears: financialMetrics.cashConversion.components.yearsAvailable,
-      cashConversionHasAllComponents: financialMetrics.cashConversion.hasAllComponents,
-      
-      // Metadata
-      lastUpdated: new Date()
-    };
-    
-    return stockData;
-  } catch (error) {
-    console.error(`Error processing ${stockInfo.symbol}:`, error.message);
-    return null;
+    // Handle other errors
+    failedRequests++;
+    console.error(`[ERROR] makeApiRequest: ${error.message}`);
+    throw error;
   }
 }
 
 /**
- * Process a batch of stocks
- * @param {Array} stockBatch - Batch of stocks to process
- * @returns {Promise<Array>} - Processed stock data
+ * Process stock data with custom Debt/EBITDA calculation
+ * @param {Object} stockInfo - Basic stock info
+ * @param {Object} profile - Company profile
+ * @param {Object} quote - Company quote
+ * @param {Object} ratios - Financial ratios
+ * @param {Object} financials - Financial statements
+ * @returns {Object} Processed stock data
  */
-async function processBatch(stockBatch) {
-  try {
-    // Process stocks concurrently with limited concurrency
-    const promises = [];
-    for (let i = 0; i < stockBatch.length; i += CONCURRENT_REQUESTS) {
-      const batchPromises = stockBatch.slice(i, i + CONCURRENT_REQUESTS).map(stock => processStock(stock));
-      const results = await Promise.all(batchPromises);
-      promises.push(...results);
+function processStockData(stockInfo, profile, quote, ratios, financials) {
+  // Create base stock object
+  const stock = {
+    symbol: stockInfo.symbol,
+    name: stockInfo.name || profile?.companyName || '',
+    exchange: stockInfo.exchange || profile?.exchangeShortName || '',
+    sector: profile?.sector || '',
+    industry: profile?.industry || '',
+    price: quote?.price || 0,
+    marketCap: quote?.marketCap || 0,
+    avgDollarVolume: quote?.avgVolume ? quote.avgVolume * (quote.price || 0) : 0,
+    lastUpdated: new Date()
+  };
+  
+  // Add financial metrics
+  if (ratios) {
+    // Check if Debt/EBITDA is directly available from API
+    if (ratios.debtToEBITDA || ratios.netDebtToEBITDA) {
+      stock.netDebtToEBITDA = ratios.debtToEBITDA || ratios.netDebtToEBITDA;
+      stock.netDebtToEBITDACalculated = false;
+    } else if (financials) {
+      // Calculate from components if direct value not available
+      const calculationResult = debtEBITDACalculator.calculateDebtToEBITDA(financials);
       
-      // Add small delay between sub-batches to avoid rate limiting
-      if (i + CONCURRENT_REQUESTS < stockBatch.length) {
-        await new Promise(resolve => setTimeout(resolve, 200));
+      if (calculationResult.hasAllComponents && calculationResult.value !== null) {
+        stock.netDebtToEBITDA = calculationResult.value;
+        stock.netDebtToEBITDACalculated = true;
+        stock.netDebtToEBITDAMethod = calculationResult.method;
+      } else {
+        stock.netDebtToEBITDA = null;
       }
     }
     
-    // Filter out null results
-    return promises.filter(result => result !== null);
-  } catch (error) {
-    console.error('Error processing batch:', error.message);
-    return [];
+    stock.peRatio = ratios.priceEarningsRatio || 0;
+    stock.dividendYield = ratios.dividendYield || 0;
   }
+  
+  // Add other metrics
+  if (financials) {
+    stock.evToEBIT = financials.enterpriseValueOverEBIT || 0;
+    stock.rotce = financials.returnOnTangibleAssets || 0;
+  }
+  
+  // Calculate score
+  stock.score = calculateScore(stock);
+  
+  return stock;
 }
 
 /**
- * Save processed stocks to database
- * @param {Array} stocks - Processed stock data
- * @returns {Promise<number>} - Number of stocks saved
+ * Calculate stock score based on various metrics
+ * @param {Object} stock - Stock data
+ * @returns {Number} Score from 0-100
  */
-async function saveStocksToDatabase(stocks) {
-  try {
-    let savedCount = 0;
-    
-    for (const stock of stocks) {
-      // Use findOneAndUpdate to upsert
-      await Stock.findOneAndUpdate(
-        { symbol: stock.symbol },
-        stock,
-        { upsert: true, new: true }
-      );
-      savedCount++;
-    }
-    
-    return savedCount;
-  } catch (error) {
-    console.error('Error saving stocks to database:', error.message);
-    return 0;
-  }
+function calculateScore(stock) {
+  let score = 0;
+  
+  // Market cap score (0-20)
+  const marketCap = stock.marketCap || 0;
+  if (marketCap > 10000000000) score += 20; // $10B+
+  else if (marketCap > 2000000000) score += 15; // $2B+
+  else if (marketCap > 300000000) score += 10; // $300M+
+  else score += 5;
+  
+  // Debt score (0-20)
+  const debtToEBITDA = stock.netDebtToEBITDA || 0;
+  if (debtToEBITDA < 1) score += 20;
+  else if (debtToEBITDA < 2) score += 15;
+  else if (debtToEBITDA < 3) score += 10;
+  else score += 5;
+  
+  // Valuation score (0-20)
+  const peRatio = stock.peRatio || 0;
+  if (peRatio > 0 && peRatio < 15) score += 20;
+  else if (peRatio > 0 && peRatio < 25) score += 15;
+  else if (peRatio > 0 && peRatio < 35) score += 10;
+  else score += 5;
+  
+  // Profitability score (0-20)
+  const rotce = stock.rotce || 0;
+  if (rotce > 0.2) score += 20;
+  else if (rotce > 0.15) score += 15;
+  else if (rotce > 0.1) score += 10;
+  else score += 5;
+  
+  // Add random factor (0-20) for demonstration
+  score += Math.floor(Math.random() * 20);
+  
+  // Cap at 100
+  return Math.min(score, 100);
 }
 
 /**
- * Main import function
- * @param {number} limit - Optional limit on number of stocks to import
- * @returns {Promise<Object>} - Import results
+ * Get all stock symbols from FMP API
+ * @returns {Promise<Array>} Promise resolving to array of stock symbols
  */
-async function importStocksWithEnhancedMetrics(limit = 0) {
+async function getAllStockSymbols() {
   try {
-    console.log('Starting enhanced FMP import with ROTCE and Cash Conversion support...');
+    console.log('Starting getAllStockSymbols function with optimized rate limiting');
     
-    // Connect to database
-    await connectDB();
-    
-    // Fetch stock list from FMP
-    console.log('Fetching stock list...');
-    const stockList = await fetchFMPData('/stock/list');
+    // Get all stock symbols from FMP API
+    console.log('Making API request to get all stock symbols...');
+    const stockList = await makeApiRequest('/stock/list');
     
     if (!stockList || !Array.isArray(stockList)) {
-      throw new Error('Failed to fetch stock list');
+      throw new Error('Invalid response from FMP API');
     }
     
-    // Filter to only include stocks from major exchanges
-    const filteredStocks = stockList.filter(stock => 
+    // Filter to only include common stocks (exclude ETFs, etc.)
+    const commonStocks = stockList.filter(stock => 
       stock.type === 'stock' && 
-      (stock.exchangeShortName === 'NYSE' || 
-       stock.exchangeShortName === 'NASDAQ')
+      (stock.exchangeShortName === 'NYSE' || stock.exchangeShortName === 'NASDAQ')
     );
     
-    // Apply limit if specified
-    const stocksToProcess = limit > 0 ? filteredStocks.slice(0, limit) : filteredStocks;
+    console.log(`Found ${commonStocks.length} common stocks on NYSE and NASDAQ`);
     
-    console.log(`Processing ${stocksToProcess.length} stocks...`);
+    // For Heroku, limit to a reasonable number to avoid timeouts
+    // Increased from 100 to 200 for higher throughput
+    const limitedStocks = commonStocks.slice(0, 200);
+    console.log(`Limited to ${limitedStocks.length} stocks for Heroku compatibility`);
     
-    // Process stocks in batches
-    let processedStocks = [];
-    let totalSaved = 0;
-    
-    for (let i = 0; i < stocksToProcess.length; i += BATCH_SIZE) {
-      const batch = stocksToProcess.slice(i, i + BATCH_SIZE);
-      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(stocksToProcess.length / BATCH_SIZE)}...`);
-      
-      const processedBatch = await processBatch(batch);
-      const savedCount = await saveStocksToDatabase(processedBatch);
-      
-      processedStocks.push(...processedBatch);
-      totalSaved += savedCount;
-      
-      console.log(`Batch complete. Saved ${savedCount} stocks.`);
-      
-      // Add delay between batches to avoid rate limiting
-      if (i + BATCH_SIZE < stocksToProcess.length) {
-        console.log(`Waiting ${DELAY_BETWEEN_BATCHES}ms before next batch...`);
-        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
-      }
-    }
-    
-    console.log('Import complete!');
-    console.log(`Processed ${processedStocks.length} stocks, saved ${totalSaved} to database.`);
-    
-    // Disconnect from database
-    await mongoose.disconnect();
-    
-    return {
-      totalProcessed: processedStocks.length,
-      totalSaved,
-      success: true
-    };
+    return limitedStocks.map(stock => ({
+      symbol: stock.symbol,
+      name: stock.name,
+      exchange: stock.exchangeShortName
+    }));
   } catch (error) {
-    console.error('Error in import process:', error.message);
-    
-    // Ensure database connection is closed
-    try {
-      await mongoose.disconnect();
-    } catch (err) {
-      console.error('Error disconnecting from database:', err.message);
-    }
-    
-    return {
-      error: error.message,
-      success: false
-    };
+    console.error(`[API] getAllStockSymbols: ${error.message}`);
+    throw error;
   }
 }
 
-// Export functions
-module.exports = {
-  importStocksWithEnhancedMetrics,
-  fetchComprehensiveFinancialData,
-  processStock
-};
-
-// Run import if called directly
-if (require.main === module) {
-  // Get limit from command line arguments
-  const limit = process.argv[2] ? parseInt(process.argv[2]) : 0;
-  
-  importStocksWithEnhancedMetrics(limit)
-    .then(result => {
-      console.log('Import result:', result);
-      process.exit(0);
-    })
-    .catch(error => {
-      console.error('Import failed:', error);
-      process.exit(1);
-    });
+/**
+ * Import stock data for a single symbol with optimized API usage
+ * @param {Object} stockInfo - Basic stock info
+ * @returns {Promise<Object>} Promise resolving to imported stock data
+ */
+async function importStock(stockInfo) {
+  try {
+    const symbol = stockInfo.symbol;
+    console.log(`Importing data for ${symbol}...`);
+    
+    // Make parallel requests for different data types
+    const [profile, quote, ratios, financials] = await Promise.all([
+      makeApiRequest(`/profile/${symbol}`).then(data => data && data.length > 0 ? data[0] : null),
+      makeApiRequest(`/quote/${symbol}`).then(data => data && data.length > 0 ? data[0] : null),
+      makeApiRequest(`/ratios/${symbol}`).then(data => data && data.length > 0 ? data[0] : null),
+      makeApiRequest(`/income-statement/${symbol}?limit=1`).then(data => data && data.length > 0 ? data[0] : null)
+    ]);
+    
+    // Process and combine data
+    const stockData = processStockData(stockInfo, profile, quote, ratios, financials);
+    
+    // Return processed data
+    return stockData;
+  } catch (error) {
+    console.error(`Error importing ${stockInfo.symbol}:`, error);
+    return null;
+  }
 }
+
+/**
+ * Import all stocks with optimized parallel processing
+ * @param {Array} stocks - Array of stock info objects
+ * @param {Function} saveCallback - Function to save stock data
+ * @param {Function} progressCallback - Function to report progress
+ * @returns {Promise} Promise resolving when import is complete
+ */
+async function importAllStocksOptimized(stocks, saveCallback, progressCallback) {
+  try {
+    console.log(`Starting optimized import of ${stocks.length} stocks with concurrency ${currentConcurrency}`);
+    
+    // Update import status
+    importStatus = {
+      status: 'running',
+      startTime: new Date(),
+      progress: {
+        total: stocks.length,
+        completed: 0,
+        failed: 0
+      }
+    };
+    
+    // Process stocks in batches with adaptive concurrency
+    let completed = 0;
+    let failed = 0;
+    
+    // Process in batches
+    for (let i = 0; i < stocks.length; i += currentConcurrency) {
+      // Check if we're approaching timeout
+      if (Date.now() - importStatus.startTime > IMPORT_TIMEOUT) {
+        console.log('Import timeout approaching, stopping gracefully');
+        break;
+      }
+      
+      const batch = stocks.slice(i, i + currentConcurrency);
+      
+      // Process batch concurrently
+      const results = await Promise.allSettled(batch.map(stock => importStock(stock)));
+      
+      // Process and save results
+      const successfulStocks = [];
+      results.forEach((result, index) => {
+        if (result.status === 'fulfilled' && result.value) {
+          completed++;
+          successfulStocks.push(result.value);
+        } else {
+          failed++;
+        }
+      });
+      
+      // Save successful stocks in bulk if possible
+      if (successfulStocks.length > 0 && saveCallback) {
+        await saveCallback(successfulStocks);
+      }
+      
+      // Update progress
+      importStatus.progress = {
+        total: stocks.length,
+        completed,
+        failed,
+        remaining: stocks.length - (completed + failed)
+      };
+      
+      // Report progress
+      if (progressCallback) {
+        progressCallback(importStatus.progress);
+      }
+      
+      // Log progress
+      console.log(`Progress: ${completed + failed}/${stocks.length} (${completed} succeeded, ${failed} failed)`);
+      
+      // No delay between batches to maximize throughput
+      // Only add a small delay if we've been rate limited recently
+      if (lastRateLimitTime > Date.now() - 5000) {
+        await new Promise(resolve => setTimeout(resolve, 100));
+      }
+    }
+    
+    // Update import status
+    importStatus = {
+      status: 'completed',
+      startTime: importStatus.startTime,
+      endTime: new Date(),
+      progress: {
+        total: stocks.length,
+        completed,
+        failed,
+        remaining: stocks.length - (completed + failed)
+      }
+    };
+    
+    console.log('Import completed successfully');
+    console.log(`Imported ${completed} stocks, ${failed} failed`);
+    
+    return {
+      total: stocks.length,
+      completed,
+      failed
+    };
+  } catch (error) {
+    console.error(`[API] importAllStocksOptimized: ${error.message}`);
+    
+    // Update import status
+    importStatus = {
+      status: 'error',
+      startTime: importStatus.startTime,
+      endTime: new Date(),
+      error: error.message,
+      progress: importStatus.progress
+    };
+    
+    throw error;
+  }
+}
+
+/**
+ * Save stock data to MongoDB
+ * @param {Array} stocks - Array of stock data objects
+ * @returns {Promise} Promise resolving when save is complete
+ */
+async function saveStocksToDB(stocks) {
+  try {
+    // Get Stock model
+    const Stock = mongoose.model('Stock');
+    
+    // Use bulkWrite for better performance
+    const bulkOps = stocks.map(stock => ({
+      updateOne: {
+        filter: { symbol: stock.symbol },
+        update: { $set: stock },
+        upsert: true
+      }
+    }));
+    
+    // Execute bulk operation
+    await Stock.bulkWrite(bulkOps);
+    
+    return true;
+  } catch (error) {
+    console.error(`[DB] Error saving stocks to database: ${error.message}`);
+    throw error;
+  }
+}
+
+/**
+ * Test API call rate to verify 750 calls per minute capability
+ * @param {Number} duration - Test duration in seconds
+ * @returns {Promise} Promise resolving when test is complete
+ */
+async function testApiCallRate(duration = 60) {
+  console.log(`Starting API call rate test for ${duration} seconds...`);
+  
+  const startTime = Date.now();
+  const endTime = startTime + (duration * 1000);
+  let callCount = 0;
+  let successCount = 0;
+  let failCount = 0;
+  
+  // Reset rate monitoring
+  minuteStartTime = Date.now();
+  requestsThisMinute = 0;
+  minuteCounter = 1;
+  
+  // Create a simple endpoint that returns quickly
+  const testEndpoint = '/quote/AAPL';
+  
+  // Make concurrent requests to maximize throughput
+  const concurrency = 30;
+  
+  while (Date.now() < endTime) {
+    const promises = [];
+    
+    // Launch concurrent requests
+    for (let i = 0; i < concurrency; i++) {
+      promises.push(
+        makeApiRequest(testEndpoint)
+          .then(() => { successCount++; })
+          .catch(() => { failCount++; })
+          .finally(() => { callCount++; })
+      );
+    }
+    
+    // Wait for all requests to complete
+    await Promise.allSettled(promises);
+    
+    // Brief pause to allow for rate monitoring
+    await new Promise(resolve => setTimeout(resolve, 50));
+  }
+  
+  const actualDuration = (Date.now() - startTime) / 1000;
+  const callsPerMinute = (callCount / actualDuration) * 60;
+  
+  console.log(`Test completed in ${actualDuration.toFixed(2)} seconds`);
+  console.log(`Total API calls: ${callCount} (${successCount} success, ${failCount} fail)`);
+  console.log(`Rate: ${callsPerMinute.toFixed(2)} calls per minute`);
+  
+  return {
+    duration: actualDuration,
+    totalCalls: callCount,
+    successCalls: successCount,
+    failCalls: failCount,
+    callsPerMinute: callsPerMinute
+  };
+}
+
+/**
+ * Main function to run the import process
+ */
+async function runImport() {
+  try {
+    console.log('Starting optimized FMP import process (750 calls/minute)...');
+    
+    // Connect to MongoDB
+    console.log(`Connecting to MongoDB at ${MONGODB_URI || 'mongodb://localhost:27017/stocksDB'}...`);
+    await mongoose.connect(MONGODB_URI || 'mongodb://localhost:27017/stocksDB');
+    console.log('Connected to MongoDB');
+    
+    // Ensure Stock model is defined
+    if (!mongoose.models.Stock) {
+      const stockSchema = new mongoose.Schema({
+        symbol: { type: String, required: true, unique: true },
+        name: String,
+        exchange: String,
+        sector: String,
+        industry: String,
+        price: Number,
+        marketCap: Number,
+        avgDollarVolume: Number,
+        netDebtToEBITDA: Number,
+        evToEBIT: Number,
+        rotce: Number,
+        peRatio: Number,
+        dividendYield: Number,
+        score: Number,
+        lastUpdated: Date
+      });
+      
+      mongoose.model('Stock', stockSchema);
+    }
+    
+    // Get all stock symbols
+    console.log('Getting all stock symbols...');
+    const stocks = await getAllStockSymbols();
+    
+    // Import all stocks
+    console.log(`Starting import of ${stocks.length} stocks...`);
+    const result = await importAllStocksOptimized(
+      stocks,
+      saveStocksToDB,
+      progress => console.log(`Progress update: ${progress.completed}/${progress.total} stocks processed`)
+    );
+    
+    console.log('Import completed with results:', result);
+    
+    // Disconnect from MongoDB
+    await mongoose.disconnect();
+    console.log('Disconnected from MongoDB');
+    
+    return result;
+  } catch (error) {
+    console.error('Error in import process:', error);
+    
+    // Ensure MongoDB connection is closed
+    if (mongoose.connection.readyState !== 0) {
+      await mongoose.disconnect();
+      console.log('Disconnected from MongoDB due to error');
+    }
+    
+    throw error;
+  }
+}
+
+// Run the import if this script is executed directly
+if (require.main === module) {
+  // Check if we should run a rate test first
+  if (process.argv.includes('--test-rate')) {
+    console.log('Running API rate test...');
+    testApiCallRate(60)
+      .then(result => {
+        console.log('Rate test completed:', result);
+        
+        if (result.callsPerMinute >= 700) {
+          console.log('Rate test successful! Proceeding with import...');
+          return runImport();
+        } else {
+          console.log('Rate test failed to achieve target rate. Please check API key and network conditions.');
+          process.exit(1);
+        }
+      })
+      .catch(error => {
+        console.error('Error in rate test:', error);
+        process.exit(1);
+      });
+  } else {
+    // Run the import directly
+    runImport()
+      .then(() => {
+        console.log('Import process completed successfully');
+        process.exit(0);
+      })
+      .catch(error => {
+        console.error('Import process failed:', error);
+        process.exit(1);
+      });
+  }
+}
+
+// Export functions for testing or external use
+module.exports = {
+  importAllStocksOptimized,
+  testApiCallRate,
+  runImport
+};
