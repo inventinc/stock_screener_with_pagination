@@ -254,4 +254,16 @@
         width: 100%;
         margin-top: 5px;
     }
+    
+    /* Fix for filter content being cut off on mobile */
+    .filters-content {
+        max-height: none !important; /* Override the 1000px max-height */
+        height: auto !important; /* Allow content to determine height */
+        overflow: visible !important; /* Ensure content isn't hidden */
+    }
+    
+    /* Only apply overflow:hidden when collapsed */
+    .filters-content.collapsed {
+        overflow: hidden !important;
+    }
 }
