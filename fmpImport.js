@@ -1,17 +1,19 @@
 /**
- * Enhanced FMP API Import Strategy
- * Comprehensive version with complete field coverage and improved data quality
+ * Full Refresh FMP API Import Script
+ * Processes all stocks in a single run with checkpoint/resume capability
  * 
  * Features:
  * - Complete field coverage including all required metrics
- * - Data validation and quality checks
- * - Prioritization and incremental update strategy
+ * - Processes all stocks in a single run (no rotation)
+ * - Checkpoint system to resume interrupted imports
+ * - Tuned for API rate limits
  * - Enhanced error handling and reporting
- * - Optimized for Heroku deployment
  */
 
 const axios = require('axios');
 const mongoose = require('mongoose');
+const fs = require('fs');
+const path = require('path');
 require('dotenv').config();
 
 // Import custom Debt/EBITDA calculator
@@ -27,22 +29,25 @@ const MONGODB_URI = process.env.MONGODB_URI;
 // Import timeout (Heroku has 30 min limit)
 const IMPORT_TIMEOUT = 25 * 60 * 1000; // 25 minutes
 
-// Enhanced rate limiting configuration
+// Checkpoint file path
+const CHECKPOINT_FILE = path.join(__dirname, 'import_checkpoint.json');
+
+// Rate limiting configuration - tuned for typical API plans
 const RATE_CONFIG = {
-  initialConcurrency: 30,       // Start with moderate concurrency
-  minConcurrency: 10,           // Minimum concurrency
-  maxConcurrency: 60,           // Maximum concurrency
-  concurrencyStep: 5,           // How much to adjust concurrency
-  initialBackoff: 100,          // Initial backoff in ms
-  maxBackoff: 2000,             // Maximum backoff in ms
-  backoffFactor: 1.3,           // Exponential backoff factor
-  successThreshold: 20,         // Number of consecutive successes to increase concurrency
-  rateLimitThreshold: 3,        // Number of rate limits to decrease concurrency
-  adaptiveWindow: 30000,        // Time window for rate limit adaptation
-  requestSpacing: 0,            // No minimum spacing between requests
+  initialConcurrency: 10,       // Start with lower concurrency
+  minConcurrency: 5,            // Lower minimum
+  maxConcurrency: 20,           // Lower maximum
+  concurrencyStep: 2,           // Smaller steps for finer control
+  initialBackoff: 500,          // Longer initial backoff
+  maxBackoff: 5000,             // Longer maximum backoff
+  backoffFactor: 1.5,           // Steeper backoff
+  successThreshold: 15,         // Number of consecutive successes to increase concurrency
+  rateLimitThreshold: 2,        // Number of rate limits to decrease concurrency
+  adaptiveWindow: 60000,        // Time window for rate limit adaptation (1 minute)
+  requestSpacing: 10,           // Minimum spacing between requests (ms)
   
-  // Target API call rate
-  targetRequestsPerMinute: 750, // 750 calls per minute
+  // Target API call rate - conservative default
+  targetRequestsPerMinute: 250, // 250 calls per minute
   
   // Endpoint-specific rate limits
   endpointLimits: {
@@ -61,8 +66,8 @@ const RATE_CONFIG = {
     },
     // Default for all other endpoints
     'default': {
-      requestsPerMinute: 750,
-      spacing: 0
+      requestsPerMinute: 250,
+      spacing: 10
     }
   }
 };
@@ -98,21 +103,20 @@ let importStatus = {
   progress: {
     total: 0,
     completed: 0,
-    failed: 0
+    failed: 0,
+    remaining: 0
   },
   dataQuality: {
     missingFields: {},
     validationIssues: {},
     completenessScore: 100
+  },
+  checkpoint: {
+    exists: false,
+    timestamp: null,
+    position: 0
   }
 };
-
-// Priority queue for stock imports
-let priorityQueue = [];
-
-// Stock rotation tracking
-let stockRotationIndex = 0;
-const ROTATION_BATCH_SIZE = 200; // Process 200 stocks per run
 
 /**
  * Get rate limit configuration for a specific endpoint
@@ -252,7 +256,7 @@ async function makeApiRequest(endpoint, params = {}) {
     const url = `${BASE_URL}${endpoint}`;
     const response = await axios.get(url, { 
       params,
-      timeout: 10000 // 10 second timeout
+      timeout: 15000 // 15 second timeout
     });
     
     // Handle successful request
@@ -269,6 +273,11 @@ async function makeApiRequest(endpoint, params = {}) {
       );
       consecutiveSuccesses = 0;
       console.log(`[ADAPTIVE] Increased concurrency to ${currentConcurrency}`);
+    }
+    
+    // Enforce minimum spacing between requests
+    if (RATE_CONFIG.requestSpacing > 0) {
+      await new Promise(resolve => setTimeout(resolve, RATE_CONFIG.requestSpacing));
     }
     
     return response.data;
@@ -654,34 +663,81 @@ async function prioritizeStocks(stocks, existingStocks) {
 }
 
 /**
- * Get stocks for current rotation batch
- * @param {Array} prioritizedStocks - Array of prioritized stocks
- * @returns {Array} Batch of stocks for current rotation
+ * Load checkpoint if exists
+ * @returns {Object|null} Checkpoint data or null if no valid checkpoint
  */
-function getRotationBatch(prioritizedStocks) {
-  const totalStocks = prioritizedStocks.length;
-  
-  // If we have fewer stocks than batch size, return all
-  if (totalStocks <= ROTATION_BATCH_SIZE) {
-    return prioritizedStocks;
+function loadCheckpoint() {
+  try {
+    if (fs.existsSync(CHECKPOINT_FILE)) {
+      const checkpointData = JSON.parse(fs.readFileSync(CHECKPOINT_FILE, 'utf8'));
+      
+      // Validate checkpoint data
+      if (checkpointData && 
+          checkpointData.timestamp && 
+          checkpointData.position !== undefined &&
+          checkpointData.remaining !== undefined) {
+        
+        // Check if checkpoint is too old (more than 24 hours)
+        const checkpointAge = (Date.now() - checkpointData.timestamp) / (1000 * 60 * 60);
+        if (checkpointAge > 24) {
+          console.log(`Checkpoint is ${checkpointAge.toFixed(1)} hours old, starting fresh`);
+          return null;
+        }
+        
+        console.log(`Found valid checkpoint from ${new Date(checkpointData.timestamp).toISOString()}`);
+        console.log(`Resuming from position ${checkpointData.position} with ${checkpointData.remaining} stocks remaining`);
+        
+        return checkpointData;
+      }
+    }
+  } catch (error) {
+    console.error('Error loading checkpoint:', error);
   }
   
-  // Calculate start index for this rotation
-  const startIndex = stockRotationIndex % totalStocks;
-  
-  // Get batch wrapping around the end if necessary
-  let batch = [];
-  for (let i = 0; i < ROTATION_BATCH_SIZE; i++) {
-    const index = (startIndex + i) % totalStocks;
-    batch.push(prioritizedStocks[index]);
+  return null;
+}
+
+/**
+ * Save checkpoint
+ * @param {Number} position - Current position in stocks array
+ * @param {Number} remaining - Number of stocks remaining
+ * @param {String} lastSymbol - Symbol of last processed stock
+ */
+function saveCheckpoint(position, remaining, lastSymbol) {
+  try {
+    const checkpointData = {
+      timestamp: Date.now(),
+      position,
+      remaining,
+      lastSymbol
+    };
+    
+    fs.writeFileSync(CHECKPOINT_FILE, JSON.stringify(checkpointData, null, 2));
+    console.log(`Checkpoint saved at position ${position}, ${remaining} stocks remaining`);
+    
+    // Update import status
+    importStatus.checkpoint = {
+      exists: true,
+      timestamp: checkpointData.timestamp,
+      position: position
+    };
+  } catch (error) {
+    console.error('Error saving checkpoint:', error);
   }
-  
-  // Update rotation index for next run
-  stockRotationIndex = (startIndex + ROTATION_BATCH_SIZE) % totalStocks;
-  
-  console.log(`Selected rotation batch ${Math.floor(startIndex / ROTATION_BATCH_SIZE) + 1} of ${Math.ceil(totalStocks / ROTATION_BATCH_SIZE)}`);
-  
-  return batch;
+}
+
+/**
+ * Clear checkpoint file
+ */
+function clearCheckpoint() {
+  try {
+    if (fs.existsSync(CHECKPOINT_FILE)) {
+      fs.unlinkSync(CHECKPOINT_FILE);
+      console.log('Checkpoint file cleared');
+    }
+  } catch (error) {
+    console.error('Error clearing checkpoint:', error);
+  }
 }
 
 /**
@@ -716,12 +772,12 @@ async function importStock(stockInfo) {
 }
 
 /**
- * Import stocks with enhanced prioritization and rotation
+ * Import all stocks with checkpoint/resume capability
  * @returns {Promise} Promise resolving when import is complete
  */
-async function importStocksEnhanced() {
+async function importAllStocks() {
   try {
-    console.log('Starting enhanced stock import process...');
+    console.log('Starting full refresh stock import process...');
     
     // Update import status
     importStatus = {
@@ -730,12 +786,18 @@ async function importStocksEnhanced() {
       progress: {
         total: 0,
         completed: 0,
-        failed: 0
+        failed: 0,
+        remaining: 0
       },
       dataQuality: {
         missingFields: {},
         validationIssues: {},
         completenessScore: 100
+      },
+      checkpoint: {
+        exists: false,
+        timestamp: null,
+        position: 0
       }
     };
     
@@ -753,27 +815,47 @@ async function importStocksEnhanced() {
     // Prioritize stocks based on age, quality, etc.
     const prioritizedStocks = await prioritizeStocks(allStocks, existingStocks);
     
-    // Get batch for current rotation
-    const batchStocks = getRotationBatch(prioritizedStocks);
+    // Check for existing checkpoint
+    const checkpoint = loadCheckpoint();
+    let startPosition = 0;
     
-    console.log(`Selected ${batchStocks.length} stocks for this import run`);
+    if (checkpoint) {
+      // Resume from checkpoint
+      startPosition = checkpoint.position;
+      importStatus.checkpoint = {
+        exists: true,
+        timestamp: checkpoint.timestamp,
+        position: startPosition
+      };
+    }
+    
+    // Get all stocks to process (no rotation/batching)
+    const stocksToProcess = prioritizedStocks.slice(startPosition);
+    console.log(`Processing all ${stocksToProcess.length} remaining stocks in a single run`);
     
     // Update import status
-    importStatus.progress.total = batchStocks.length;
+    importStatus.progress.total = prioritizedStocks.length;
+    importStatus.progress.remaining = stocksToProcess.length;
     
     // Process stocks in batches with adaptive concurrency
     let completed = 0;
     let failed = 0;
     
     // Process in batches
-    for (let i = 0; i < batchStocks.length; i += currentConcurrency) {
+    for (let i = 0; i < stocksToProcess.length; i += currentConcurrency) {
       // Check if we're approaching timeout
       if (Date.now() - importStatus.startTime > IMPORT_TIMEOUT) {
-        console.log('Import timeout approaching, stopping gracefully');
+        console.log('Import timeout approaching, saving checkpoint and stopping gracefully');
+        
+        // Save checkpoint for resuming later
+        const currentPosition = startPosition + i;
+        const remaining = prioritizedStocks.length - currentPosition;
+        saveCheckpoint(currentPosition, remaining, stocksToProcess[i].symbol);
+        
         break;
       }
       
-      const batch = batchStocks.slice(i, i + currentConcurrency);
+      const batch = stocksToProcess.slice(i, i + currentConcurrency);
       
       // Process batch concurrently
       const results = await Promise.allSettled(batch.map(stock => importStock(stock)));
@@ -804,19 +886,25 @@ async function importStocksEnhanced() {
       
       // Update progress
       importStatus.progress = {
-        total: batchStocks.length,
-        completed,
-        failed,
-        remaining: batchStocks.length - (completed + failed)
+        total: prioritizedStocks.length,
+        completed: startPosition + completed,
+        failed: failed,
+        remaining: prioritizedStocks.length - (startPosition + completed + failed)
       };
       
       // Log progress
-      console.log(`Progress: ${completed + failed}/${batchStocks.length} (${completed} succeeded, ${failed} failed)`);
+      console.log(`Progress: ${startPosition + completed + failed}/${prioritizedStocks.length} (${completed} succeeded, ${failed} failed)`);
       
-      // No delay between batches to maximize throughput
-      // Only add a small delay if we've been rate limited recently
-      if (lastRateLimitTime > Date.now() - 5000) {
-        await new Promise(resolve => setTimeout(resolve, 100));
+      // Save checkpoint every 100 stocks
+      if (i > 0 && i % 100 === 0) {
+        const currentPosition = startPosition + i;
+        const remaining = prioritizedStocks.length - currentPosition;
+        saveCheckpoint(currentPosition, remaining, batch[0].symbol);
+      }
+      
+      // Add a small delay between batches if we've been rate limited recently
+      if (lastRateLimitTime > Date.now() - 10000) {
+        await new Promise(resolve => setTimeout(resolve, 500));
       }
     }
     
@@ -827,33 +915,46 @@ async function importStocksEnhanced() {
     
     importStatus.dataQuality.completenessScore = Math.max(0, Math.round(100 * (1 - (averageMissingPerStock / totalFields))));
     
+    // Check if we've completed all stocks
+    if (startPosition + completed + failed >= prioritizedStocks.length) {
+      // Clear checkpoint if we've completed everything
+      clearCheckpoint();
+      console.log('All stocks processed, checkpoint cleared');
+    }
+    
     // Update import status
     importStatus = {
       status: 'completed',
       startTime: importStatus.startTime,
       endTime: new Date(),
       progress: {
-        total: batchStocks.length,
-        completed,
-        failed,
-        remaining: batchStocks.length - (completed + failed)
+        total: prioritizedStocks.length,
+        completed: startPosition + completed,
+        failed: failed,
+        remaining: prioritizedStocks.length - (startPosition + completed + failed)
       },
-      dataQuality: importStatus.dataQuality
+      dataQuality: importStatus.dataQuality,
+      checkpoint: importStatus.checkpoint
     };
     
-    console.log('Import completed successfully');
-    console.log(`Imported ${completed} stocks, ${failed} failed`);
+    console.log('Import completed or paused');
+    console.log(`Imported ${completed} stocks, ${failed} failed, ${importStatus.progress.remaining} remaining`);
     console.log(`Data quality score: ${importStatus.dataQuality.completenessScore}%`);
     console.log('Most common missing fields:', importStatus.dataQuality.missingFields);
     
     return {
-      total: batchStocks.length,
-      completed,
-      failed,
-      dataQuality: importStatus.dataQuality
+      total: prioritizedStocks.length,
+      completed: startPosition + completed,
+      failed: failed,
+      remaining: importStatus.progress.remaining,
+      dataQuality: importStatus.dataQuality,
+      checkpoint: importStatus.checkpoint.exists ? {
+        position: importStatus.checkpoint.position,
+        timestamp: new Date(importStatus.checkpoint.timestamp)
+      } : null
     };
   } catch (error) {
-    console.error(`[API] importStocksEnhanced: ${error.message}`);
+    console.error(`[API] importAllStocks: ${error.message}`);
     
     // Update import status
     importStatus = {
@@ -862,7 +963,8 @@ async function importStocksEnhanced() {
       endTime: new Date(),
       error: error.message,
       progress: importStatus.progress,
-      dataQuality: importStatus.dataQuality
+      dataQuality: importStatus.dataQuality,
+      checkpoint: importStatus.checkpoint
     };
     
     throw error;
@@ -899,7 +1001,7 @@ async function saveStocksToDB(stocks) {
 }
 
 /**
- * Test API call rate to verify 750 calls per minute capability
+ * Test API call rate to verify capability
  * @param {Number} duration - Test duration in seconds
  * @returns {Promise} Promise resolving when test is complete
  */
@@ -921,7 +1023,7 @@ async function testApiCallRate(duration = 60) {
   const testEndpoint = '/quote/AAPL';
   
   // Make concurrent requests to maximize throughput
-  const concurrency = 30;
+  const concurrency = 10;
   
   while (Date.now() < endTime) {
     const promises = [];
@@ -940,7 +1042,7 @@ async function testApiCallRate(duration = 60) {
     await Promise.allSettled(promises);
     
     // Brief pause to allow for rate monitoring
-    await new Promise(resolve => setTimeout(resolve, 50));
+    await new Promise(resolve => setTimeout(resolve, 100));
   }
   
   const actualDuration = (Date.now() - startTime) / 1000;
@@ -960,11 +1062,41 @@ async function testApiCallRate(duration = 60) {
 }
 
 /**
+ * Generate a detailed report of import status
+ * @returns {Object} Detailed report
+ */
+function generateDetailedReport() {
+  return {
+    status: importStatus.status,
+    timing: {
+      startTime: importStatus.startTime,
+      endTime: importStatus.endTime || new Date(),
+      durationMinutes: ((importStatus.endTime || new Date()) - importStatus.startTime) / (1000 * 60)
+    },
+    progress: importStatus.progress,
+    apiStats: {
+      totalRequests,
+      successfulRequests,
+      failedRequests,
+      rateLimitedRequests,
+      successRate: totalRequests > 0 ? (successfulRequests / totalRequests * 100).toFixed(2) + '%' : '0%'
+    },
+    rateLimit: {
+      currentConcurrency,
+      currentBackoff,
+      lastRateLimitTime: lastRateLimitTime ? new Date(lastRateLimitTime) : null
+    },
+    dataQuality: importStatus.dataQuality,
+    checkpoint: importStatus.checkpoint
+  };
+}
+
+/**
  * Main function to run the import process
  */
 async function runImport() {
   try {
-    console.log('Starting enhanced FMP import process...');
+    console.log('Starting full refresh FMP import process...');
     
     // Connect to MongoDB
     console.log(`Connecting to MongoDB at ${MONGODB_URI || 'mongodb://localhost:27017/stocksDB'}...`);
@@ -1006,10 +1138,20 @@ async function runImport() {
       mongoose.model('Stock', stockSchema);
     }
     
-    // Run the enhanced import
-    const result = await importStocksEnhanced();
+    // Run the full refresh import
+    const result = await importAllStocks();
     
     console.log('Import completed with results:', result);
+    
+    // Generate detailed report if requested
+    if (process.argv.includes('--detailed-report')) {
+      const report = generateDetailedReport();
+      console.log('Detailed report:', JSON.stringify(report, null, 2));
+      
+      // Save report to file
+      fs.writeFileSync('import_report.json', JSON.stringify(report, null, 2));
+      console.log('Report saved to import_report.json');
+    }
     
     // Disconnect from MongoDB
     await mongoose.disconnect();
@@ -1031,19 +1173,53 @@ async function runImport() {
 
 // Run the import if this script is executed directly
 if (require.main === module) {
+  // Check command line arguments
+  const args = process.argv.slice(2);
+  
+  if (args.includes('--help')) {
+    console.log(`
+Full Refresh FMP Import Script
+
+Usage:
+  node full_refresh_fmp_import.js [options]
+
+Options:
+  --test-rate            Run API rate test before import
+  --detailed-report      Generate detailed report after import
+  --clear-checkpoint     Clear existing checkpoint and start fresh
+  --help                 Show this help message
+    `);
+    process.exit(0);
+  }
+  
+  // Clear checkpoint if requested
+  if (args.includes('--clear-checkpoint')) {
+    clearCheckpoint();
+  }
+  
   // Check if we should run a rate test first
-  if (process.argv.includes('--test-rate')) {
+  if (args.includes('--test-rate')) {
     console.log('Running API rate test...');
     testApiCallRate(60)
       .then(result => {
         console.log('Rate test completed:', result);
         
-        if (result.callsPerMinute >= 700) {
+        if (result.callsPerMinute >= RATE_CONFIG.targetRequestsPerMinute * 0.8) {
           console.log('Rate test successful! Proceeding with import...');
           return runImport();
         } else {
-          console.log('Rate test failed to achieve target rate. Please check API key and network conditions.');
-          process.exit(1);
+          console.log(`Rate test achieved only ${result.callsPerMinute.toFixed(2)} calls/minute, which is below the target of ${RATE_CONFIG.targetRequestsPerMinute}.`);
+          console.log('Adjusting rate config and proceeding with import...');
+          
+          // Adjust rate config based on test results
+          RATE_CONFIG.targetRequestsPerMinute = Math.floor(result.callsPerMinute * 0.9);
+          RATE_CONFIG.initialConcurrency = Math.max(5, Math.floor(currentConcurrency * 0.8));
+          RATE_CONFIG.maxConcurrency = Math.max(10, Math.floor(RATE_CONFIG.maxConcurrency * 0.8));
+          
+          console.log(`Adjusted target: ${RATE_CONFIG.targetRequestsPerMinute} calls/minute`);
+          console.log(`Adjusted concurrency: ${RATE_CONFIG.initialConcurrency} initial, ${RATE_CONFIG.maxConcurrency} max`);
+          
+          return runImport();
         }
       })
       .catch(error => {
@@ -1066,11 +1242,14 @@ if (require.main === module) {
 
 // Export functions for testing or external use
 module.exports = {
-  importStocksEnhanced,
+  importAllStocks,
   testApiCallRate,
   runImport,
   processStockData,
   validateNumericField,
   prioritizeStocks,
-  getRotationBatch
+  loadCheckpoint,
+  saveCheckpoint,
+  clearCheckpoint,
+  generateDetailedReport
 };
