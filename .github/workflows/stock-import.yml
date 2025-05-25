@@ -23,14 +23,7 @@ jobs:
         run: npm ci || npm install
         
       - name: Run stock import
-        run: node full_refresh_fmp_import.js
+        run: node fmpImport.js
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
-          
-      - name: Upload checkpoint if job fails
-        if: failure()
-        uses: actions/upload-artifact@v3
-        with:
-          name: import-checkpoint
-          path: import_checkpoint.json
