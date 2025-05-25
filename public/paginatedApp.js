@@ -1,10 +1,11 @@
 /**
- * Fixed PaginatedApp.js with ROTCE Filter Support and Debt Filter Fix
+ * Fixed PaginatedApp.js with Multi-Select Filter Logic
  * 
- * This version fixes the issues with:
+ * This version fixes:
  * 1. Debt filter functionality
  * 2. ROTCE filter support
  * 3. Filter parameter mapping
+ * 4. Multi-select filter logic for market cap, volume, and other categories
  */
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -735,7 +736,7 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * FIXED: Convert filters to backend parameters
+     * FIXED: Convert filters to backend parameters with improved multi-select handling
      * @param {Object} filters - Active filters
      * @returns {URLSearchParams} Backend parameters
      */
@@ -749,79 +750,129 @@ document.addEventListener('DOMContentLoaded', function() {
             params.append('search', filters.search);
         }
         
-        // Add market cap filters
+        // FIXED: Add market cap filters with improved multi-select handling
         if (filters.market_cap && filters.market_cap.length > 0) {
-            if (filters.market_cap.includes('large')) {
-                params.append('minMarketCap', '10000000000'); // $10B+
-            } else if (filters.market_cap.includes('mid')) {
-                params.append('minMarketCap', '2000000000'); // $2B+
-            } else if (filters.market_cap.includes('small')) {
-                params.append('minMarketCap', '300000000'); // $300M+
+            // Find the lowest minimum value among selected options
+            let minMarketCap = null;
+            if (filters.market_cap.includes('micro')) minMarketCap = 0;
+            else if (filters.market_cap.includes('small')) minMarketCap = 300000000;
+            else if (filters.market_cap.includes('mid')) minMarketCap = 2000000000;
+            else if (filters.market_cap.includes('large')) minMarketCap = 10000000000;
+            
+            // Find the highest maximum value among selected options
+            let maxMarketCap = null;
+            if (filters.market_cap.includes('large')) maxMarketCap = null; // No upper limit
+            else if (filters.market_cap.includes('mid')) maxMarketCap = 10000000000;
+            else if (filters.market_cap.includes('small')) maxMarketCap = 2000000000;
+            else if (filters.market_cap.includes('micro')) maxMarketCap = 300000000;
+            
+            // Apply the parameters
+            if (minMarketCap !== null) {
+                params.append('minMarketCap', minMarketCap.toString());
             }
             
-            if (filters.market_cap.includes('micro')) {
-                params.append('maxMarketCap', '300000000'); // <$300M
-            } else if (filters.market_cap.includes('small')) {
-                params.append('maxMarketCap', '2000000000'); // <$2B
-            } else if (filters.market_cap.includes('mid')) {
-                params.append('maxMarketCap', '10000000000'); // <$10B
+            if (maxMarketCap !== null) {
+                params.append('maxMarketCap', maxMarketCap.toString());
             }
         }
         
-        // Add volume filters
+        // FIXED: Add volume filters with improved multi-select handling
         if (filters.volume && filters.volume.length > 0) {
-            if (filters.volume.includes('high')) {
-                params.append('minVolume', '5000000'); // >$5M
-            } else if (filters.volume.includes('medium')) {
-                params.append('minVolume', '1000000'); // >$1M
+            // Find the lowest minimum value among selected options
+            let minVolume = null;
+            if (filters.volume.includes('low')) minVolume = 0;
+            else if (filters.volume.includes('medium')) minVolume = 1000000;
+            else if (filters.volume.includes('high')) minVolume = 5000000;
+            
+            // Find the highest maximum value among selected options
+            let maxVolume = null;
+            if (filters.volume.includes('high')) maxVolume = null; // No upper limit
+            else if (filters.volume.includes('medium')) maxVolume = 5000000;
+            else if (filters.volume.includes('low')) maxVolume = 1000000;
+            
+            // Apply the parameters
+            if (minVolume !== null) {
+                params.append('minVolume', minVolume.toString());
             }
             
-            if (filters.volume.includes('low')) {
-                params.append('maxVolume', '1000000'); // <$1M
-            } else if (filters.volume.includes('medium')) {
-                params.append('maxVolume', '5000000'); // <$5M
+            if (maxVolume !== null) {
+                params.append('maxVolume', maxVolume.toString());
             }
         }
         
-        // FIXED: Add debt filters with correct parameter names
+        // FIXED: Add debt filters with improved multi-select handling
         if (filters.debt && filters.debt.length > 0) {
-            if (filters.debt.includes('low')) {
-                params.append('maxDebtToEBITDA', '0.5'); // <0.5x
-            } else if (filters.debt.includes('medium')) {
-                params.append('minDebtToEBITDA', '0.5'); // >0.5x
-                params.append('maxDebtToEBITDA', '1.5'); // <1.5x
-            } else if (filters.debt.includes('high')) {
-                params.append('minDebtToEBITDA', '1.5'); // >1.5x
+            // Find the lowest minimum value among selected options
+            let minDebtToEBITDA = null;
+            if (filters.debt.includes('low')) minDebtToEBITDA = 0;
+            else if (filters.debt.includes('medium')) minDebtToEBITDA = 0.5;
+            else if (filters.debt.includes('high')) minDebtToEBITDA = 1.5;
+            
+            // Find the highest maximum value among selected options
+            let maxDebtToEBITDA = null;
+            if (filters.debt.includes('high')) maxDebtToEBITDA = null; // No upper limit
+            else if (filters.debt.includes('medium')) maxDebtToEBITDA = 1.5;
+            else if (filters.debt.includes('low')) maxDebtToEBITDA = 0.5;
+            
+            // Apply the parameters
+            if (minDebtToEBITDA !== null) {
+                params.append('minDebtToEBITDA', minDebtToEBITDA.toString());
+            }
+            
+            if (maxDebtToEBITDA !== null) {
+                params.append('maxDebtToEBITDA', maxDebtToEBITDA.toString());
             }
         }
         
-        // Add valuation filters
+        // FIXED: Add valuation filters with improved multi-select handling
         if (filters.valuation && filters.valuation.length > 0) {
-            if (filters.valuation.includes('undervalued')) {
-                params.append('maxPE', '15'); // <15
-            } else if (filters.valuation.includes('fair')) {
-                params.append('minPE', '15'); // >15
-                params.append('maxPE', '25'); // <25
-            } else if (filters.valuation.includes('overvalued')) {
-                params.append('minPE', '25'); // >25
+            // Find the lowest minimum value among selected options
+            let minPE = null;
+            if (filters.valuation.includes('undervalued')) minPE = 0;
+            else if (filters.valuation.includes('fair')) minPE = 15;
+            else if (filters.valuation.includes('overvalued')) minPE = 25;
+            
+            // Find the highest maximum value among selected options
+            let maxPE = null;
+            if (filters.valuation.includes('overvalued')) maxPE = null; // No upper limit
+            else if (filters.valuation.includes('fair')) maxPE = 25;
+            else if (filters.valuation.includes('undervalued')) maxPE = 15;
+            
+            // Apply the parameters
+            if (minPE !== null) {
+                params.append('minPE', minPE.toString());
+            }
+            
+            if (maxPE !== null) {
+                params.append('maxPE', maxPE.toString());
             }
         }
         
-        // Add ROTCE filters
+        // FIXED: Add ROTCE filters with improved multi-select handling
         if (filters.rotce && filters.rotce.length > 0) {
-            if (filters.rotce.includes('excellent')) {
-                params.append('minROTCE', '0.2'); // >20%
-            } else if (filters.rotce.includes('good')) {
-                params.append('minROTCE', '0.15'); // >15%
-                params.append('maxROTCE', '0.2'); // <20%
-            } else if (filters.rotce.includes('average')) {
-                params.append('minROTCE', '0.1'); // >10%
-                params.append('maxROTCE', '0.15'); // <15%
-            } else if (filters.rotce.includes('below_average')) {
-                params.append('minROTCE', '0.05'); // >5%
-                params.append('maxROTCE', '0.1'); // <10%
-            } else if (filters.rotce.includes('poor')) {
-                params.append('maxROTCE', '0.05'); // <5%
+            // Find the lowest minimum value among selected options
+            let minROTCE = null;
+            if (filters.rotce.includes('poor')) minROTCE = 0;
+            else if (filters.rotce.includes('below_average')) minROTCE = 0.05;
+            else if (filters.rotce.includes('average')) minROTCE = 0.1;
+            else if (filters.rotce.includes('good')) minROTCE = 0.15;
+            else if (filters.rotce.includes('excellent')) minROTCE = 0.2;
+            
+            // Find the highest maximum value among selected options
+            let maxROTCE = null;
+            if (filters.rotce.includes('excellent')) maxROTCE = null; // No upper limit
+            else if (filters.rotce.includes('good')) maxROTCE = 0.2;
+            else if (filters.rotce.includes('average')) maxROTCE = 0.15;
+            else if (filters.rotce.includes('below_average')) maxROTCE = 0.1;
+            else if (filters.rotce.includes('poor')) maxROTCE = 0.05;
+            
+            // Apply the parameters
+            if (minROTCE !== null) {
+                params.append('minROTCE', minROTCE.toString());
+            }
+            
+            if (maxROTCE !== null) {
+                params.append('maxROTCE', maxROTCE.toString());
             }
         }
         
