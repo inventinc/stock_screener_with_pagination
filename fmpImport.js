@@ -1,14 +1,13 @@
 /**
- * Heroku-Optimized FMP API Import Strategy - 750 API Calls Per Minute Edition
- * Designed for Heroku deployment with maximum API throughput
+ * Enhanced FMP API Import Strategy
+ * Comprehensive version with complete field coverage and improved data quality
  * 
  * Features:
- * - Optimized for 750 API calls per minute
- * - Enhanced concurrency settings for maximum throughput
- * - Timeout handling for 30-minute dyno limit
- * - Memory-efficient processing
- * - Custom Debt/EBITDA calculation integration
- * - Comprehensive error handling and retry logic
+ * - Complete field coverage including all required metrics
+ * - Data validation and quality checks
+ * - Prioritization and incremental update strategy
+ * - Enhanced error handling and reporting
+ * - Optimized for Heroku deployment
  */
 
 const axios = require('axios');
@@ -16,7 +15,6 @@ const mongoose = require('mongoose');
 require('dotenv').config();
 
 // Import custom Debt/EBITDA calculator
-// Make sure to upload this file to your Heroku app
 const debtEBITDACalculator = require('./custom_debt_ebitda_calculator');
 
 // API configuration
@@ -29,42 +27,42 @@ const MONGODB_URI = process.env.MONGODB_URI;
 // Import timeout (Heroku has 30 min limit)
 const IMPORT_TIMEOUT = 25 * 60 * 1000; // 25 minutes
 
-// Optimized rate limiting configuration for 750 calls/minute
+// Enhanced rate limiting configuration
 const RATE_CONFIG = {
-  initialConcurrency: 30,       // Increased from 15 for higher throughput
-  minConcurrency: 10,           // Increased from 5 for higher throughput
-  maxConcurrency: 60,           // Doubled from 30 for maximum throughput
-  concurrencyStep: 5,           // Increased from 3 for faster adaptation
-  initialBackoff: 100,          // Reduced from 200ms for faster recovery
-  maxBackoff: 2000,             // Reduced from 3000ms for faster recovery
-  backoffFactor: 1.3,           // Reduced from 1.5 for faster recovery
-  successThreshold: 20,         // Reduced from 30 for faster upscaling
-  rateLimitThreshold: 3,        // Increased from 2 for more tolerance
-  adaptiveWindow: 30000,        // Reduced from 60000ms for faster adaptation
+  initialConcurrency: 30,       // Start with moderate concurrency
+  minConcurrency: 10,           // Minimum concurrency
+  maxConcurrency: 60,           // Maximum concurrency
+  concurrencyStep: 5,           // How much to adjust concurrency
+  initialBackoff: 100,          // Initial backoff in ms
+  maxBackoff: 2000,             // Maximum backoff in ms
+  backoffFactor: 1.3,           // Exponential backoff factor
+  successThreshold: 20,         // Number of consecutive successes to increase concurrency
+  rateLimitThreshold: 3,        // Number of rate limits to decrease concurrency
+  adaptiveWindow: 30000,        // Time window for rate limit adaptation
   requestSpacing: 0,            // No minimum spacing between requests
   
   // Target API call rate
-  targetRequestsPerMinute: 750, // 750 calls per minute (12.5 calls per second)
+  targetRequestsPerMinute: 750, // 750 calls per minute
   
   // Endpoint-specific rate limits
   endpointLimits: {
     // Bulk endpoints have stricter limits
     '/bulk': {
-      requestsPerMinute: 6,     // Once per 10 seconds
-      spacing: 10000            // 10 seconds between requests
+      requestsPerMinute: 6,
+      spacing: 10000
     },
     '/profile-bulk': {
-      requestsPerMinute: 1,     // Once per 60 seconds
-      spacing: 60000            // 60 seconds between requests
+      requestsPerMinute: 1,
+      spacing: 60000
     },
     '/etf-bulk': {
-      requestsPerMinute: 1,     // Once per 60 seconds
-      spacing: 60000            // 60 seconds between requests
+      requestsPerMinute: 1,
+      spacing: 60000
     },
-    // Default for all other endpoints - maximized to 750/minute
+    // Default for all other endpoints
     'default': {
-      requestsPerMinute: 750,   // 750 calls per minute
-      spacing: 0                // No minimum spacing
+      requestsPerMinute: 750,
+      spacing: 0
     }
   }
 };
@@ -101,8 +99,20 @@ let importStatus = {
     total: 0,
     completed: 0,
     failed: 0
+  },
+  dataQuality: {
+    missingFields: {},
+    validationIssues: {},
+    completenessScore: 100
   }
 };
+
+// Priority queue for stock imports
+let priorityQueue = [];
+
+// Stock rotation tracking
+let stockRotationIndex = 0;
+const ROTATION_BATCH_SIZE = 200; // Process 200 stocks per run
 
 /**
  * Get rate limit configuration for a specific endpoint
@@ -242,7 +252,7 @@ async function makeApiRequest(endpoint, params = {}) {
     const url = `${BASE_URL}${endpoint}`;
     const response = await axios.get(url, { 
       params,
-      timeout: 10000 // 10 second timeout (reduced from default)
+      timeout: 10000 // 10 second timeout
     });
     
     // Handle successful request
@@ -302,15 +312,71 @@ async function makeApiRequest(endpoint, params = {}) {
 }
 
 /**
- * Process stock data with custom Debt/EBITDA calculation
+ * Validate a numeric field
+ * @param {*} value - Value to validate
+ * @param {Object} options - Validation options
+ * @returns {Object} Validation result
+ */
+function validateNumericField(value, options = {}) {
+  const result = {
+    value: value,
+    isValid: true,
+    issues: []
+  };
+  
+  // Check if value is null or undefined
+  if (value === null || value === undefined) {
+    result.isValid = false;
+    result.issues.push('missing');
+    return result;
+  }
+  
+  // Check if value is a number
+  if (typeof value !== 'number' || isNaN(value)) {
+    result.isValid = false;
+    result.issues.push('not_a_number');
+    return result;
+  }
+  
+  // Check minimum value
+  if (options.min !== undefined && value < options.min) {
+    result.isValid = false;
+    result.issues.push('below_minimum');
+  }
+  
+  // Check maximum value
+  if (options.max !== undefined && value > options.max) {
+    result.isValid = false;
+    result.issues.push('above_maximum');
+  }
+  
+  // Check for zero when it might be a placeholder
+  if (options.zeroIsInvalid && value === 0) {
+    result.isValid = false;
+    result.issues.push('zero_value');
+  }
+  
+  // Check for negative when it should be positive
+  if (options.shouldBePositive && value < 0) {
+    result.isValid = false;
+    result.issues.push('negative_value');
+  }
+  
+  return result;
+}
+
+/**
+ * Process stock data with enhanced field coverage and validation
  * @param {Object} stockInfo - Basic stock info
  * @param {Object} profile - Company profile
  * @param {Object} quote - Company quote
  * @param {Object} ratios - Financial ratios
  * @param {Object} financials - Financial statements
- * @returns {Object} Processed stock data
+ * @param {Object} keyMetrics - Key metrics
+ * @param {Object} growth - Growth metrics
+ * @returns {Object} Processed stock data with validation
  */
-function processStockData(stockInfo, profile, quote, ratios, financials) {
+function processStockData(stockInfo, profile, quote, ratios, financials, keyMetrics, growth) {
   // Create base stock object
   const stock = {
     symbol: stockInfo.symbol,
@@ -321,12 +387,16 @@ function processStockData(stockInfo, profile, quote, ratios, financials) {
     price: quote?.price || 0,
     marketCap: quote?.marketCap || 0,
     avgDollarVolume: quote?.avgVolume ? quote.avgVolume * (quote.price || 0) : 0,
-    lastUpdated: new Date()
+    lastUpdated: new Date(),
+    dataQuality: {
+      missingFields: [],
+      validationIssues: {}
+    }
   };
   
-  // Add financial metrics
+  // Add financial metrics with validation
   if (ratios) {
-    // Check if Debt/EBITDA is directly available from API
+    // Debt/EBITDA ratio
     if (ratios.debtToEBITDA || ratios.netDebtToEBITDA) {
       stock.netDebtToEBITDA = ratios.debtToEBITDA || ratios.netDebtToEBITDA;
       stock.netDebtToEBITDACalculated = false;
@@ -340,20 +410,94 @@ function processStockData(stockInfo, profile, quote, ratios, financials) {
         stock.netDebtToEBITDAMethod = calculationResult.method;
       } else {
         stock.netDebtToEBITDA = null;
+        stock.dataQuality.missingFields.push('netDebtToEBITDA');
       }
+    } else {
+      stock.netDebtToEBITDA = null;
+      stock.dataQuality.missingFields.push('netDebtToEBITDA');
     }
     
+    // PE Ratio
     stock.peRatio = ratios.priceEarningsRatio || 0;
+    if (stock.peRatio === 0) {
+      stock.dataQuality.missingFields.push('peRatio');
+    }
+    
+    // Dividend Yield
     stock.dividendYield = ratios.dividendYield || 0;
+    
+    // Price to Book - ADDED FIELD
+    stock.priceToBook = ratios.priceToBookRatio || 0;
+    if (stock.priceToBook === 0) {
+      stock.dataQuality.missingFields.push('priceToBook');
+    }
+  } else {
+    stock.dataQuality.missingFields.push('ratios');
   }
   
-  // Add other metrics
+  // Add other metrics from financials
   if (financials) {
     stock.evToEBIT = financials.enterpriseValueOverEBIT || 0;
     stock.rotce = financials.returnOnTangibleAssets || 0;
+    
+    // FCF to Net Income - ADDED FIELD
+    if (financials.freeCashFlow && financials.netIncome && financials.netIncome !== 0) {
+      stock.fcfToNetIncome = financials.freeCashFlow / financials.netIncome;
+    } else {
+      stock.fcfToNetIncome = 0;
+      stock.dataQuality.missingFields.push('fcfToNetIncome');
+    }
+  } else {
+    stock.dataQuality.missingFields.push('financials');
   }
   
-  // Calculate score
+  // Add growth metrics - ADDED FIELDS
+  if (growth) {
+    // Revenue Growth
+    stock.revenueGrowth = growth.revenueGrowth || 0;
+    if (stock.revenueGrowth === 0) {
+      stock.dataQuality.missingFields.push('revenueGrowth');
+    }
+    
+    // Share Count Growth
+    stock.shareCountGrowth = growth.weightedAverageShsOutGrowth || 0;
+  } else {
+    stock.dataQuality.missingFields.push('growth');
+  }
+  
+  // Add insider ownership from profile - ADDED FIELD
+  if (profile) {
+    stock.insiderOwnership = profile.insiderOwnership || 0;
+    if (stock.insiderOwnership === 0) {
+      stock.dataQuality.missingFields.push('insiderOwnership');
+    }
+  }
+  
+  // Validate key numeric fields
+  const validationFields = [
+    { field: 'price', options: { min: 0, zeroIsInvalid: true, shouldBePositive: true } },
+    { field: 'marketCap', options: { min: 0, zeroIsInvalid: true, shouldBePositive: true } },
+    { field: 'netDebtToEBITDA', options: { shouldBePositive: false } }, // Can be negative
+    { field: 'peRatio', options: { shouldBePositive: true } },
+    { field: 'priceToBook', options: { shouldBePositive: true } },
+    { field: 'rotce', options: { shouldBePositive: true } }
+  ];
+  
+  validationFields.forEach(({ field, options }) => {
+    const validation = validateNumericField(stock[field], options);
+    if (!validation.isValid) {
+      stock.dataQuality.validationIssues[field] = validation.issues;
+    }
+  });
+  
+  // Calculate data quality score
+  const totalFields = 12; // Total number of important fields
+  const missingCount = stock.dataQuality.missingFields.length;
+  const validationIssueCount = Object.keys(stock.dataQuality.validationIssues).length;
+  
+  stock.dataQuality.completenessScore = Math.max(0, Math.round(100 * (1 - (missingCount + validationIssueCount) / totalFields)));
+  
+  // Calculate stock score without random factor
   stock.score = calculateScore(stock);
   
   return stock;
@@ -395,8 +539,19 @@ function calculateScore(stock) {
   else if (rotce > 0.1) score += 10;
   else score += 5;
   
-  // Add random factor (0-20) for demonstration
-  score += Math.floor(Math.random() * 20);
+  // Price to Book score (0-10) - ADDED METRIC
+  const priceToBook = stock.priceToBook || 0;
+  if (priceToBook > 0 && priceToBook < 1) score += 10;
+  else if (priceToBook > 0 && priceToBook < 2) score += 8;
+  else if (priceToBook > 0 && priceToBook < 3) score += 5;
+  else score += 0;
+  
+  // Revenue Growth score (0-10) - ADDED METRIC
+  const revenueGrowth = stock.revenueGrowth || 0;
+  if (revenueGrowth > 0.2) score += 10; // >20% growth
+  else if (revenueGrowth > 0.1) score += 8; // >10% growth
+  else if (revenueGrowth > 0.05) score += 5; // >5% growth
+  else score += 0;
   
   // Cap at 100
   return Math.min(score, 100);
@@ -426,12 +581,7 @@ async function getAllStockSymbols() {
     
     console.log(`Found ${commonStocks.length} common stocks on NYSE and NASDAQ`);
     
-    // For Heroku, limit to a reasonable number to avoid timeouts
-    // Increased from 100 to 200 for higher throughput
-    const limitedStocks = commonStocks.slice(0, 200);
-    console.log(`Limited to ${limitedStocks.length} stocks for Heroku compatibility`);
-    
-    return limitedStocks.map(stock => ({
+    return commonStocks.map(stock => ({
       symbol: stock.symbol,
       name: stock.name,
       exchange: stock.exchangeShortName
@@ -443,7 +593,99 @@ async function getAllStockSymbols() {
 }
 
 /**
- * Import stock data for a single symbol with optimized API usage
+ * Prioritize stocks for import
+ * @param {Array} stocks - Array of all available stocks
+ * @param {Array} existingStocks - Array of stocks already in database
+ * @returns {Array} Prioritized array of stocks to import
+ */
+async function prioritizeStocks(stocks, existingStocks) {
+  try {
+    console.log('Prioritizing stocks for import...');
+    
+    // Create a map of existing stocks for quick lookup
+    const existingStocksMap = new Map();
+    existingStocks.forEach(stock => {
+      existingStocksMap.set(stock.symbol, {
+        lastUpdated: stock.lastUpdated,
+        dataQuality: stock.dataQuality || { completenessScore: 100 }
+      });
+    });
+    
+    // Assign priority scores to each stock
+    const prioritizedStocks = stocks.map(stock => {
+      const existing = existingStocksMap.get(stock.symbol);
+      let priorityScore = 0;
+      let priorityReason = '';
+      
+      if (!existing) {
+        // New stocks get highest priority
+        priorityScore = 100;
+        priorityReason = 'new_stock';
+      } else {
+        // Calculate days since last update
+        const daysSinceUpdate = (Date.now() - new Date(existing.lastUpdated).getTime()) / (1000 * 60 * 60 * 24);
+        
+        // Older data gets higher priority (max 50 points for 7+ days old)
+        const agePriority = Math.min(50, Math.round(daysSinceUpdate * 7));
+        
+        // Lower quality data gets higher priority (max 50 points for 0% completeness)
+        const qualityPriority = Math.min(50, Math.round(50 * (1 - (existing.dataQuality.completenessScore / 100))));
+        
+        priorityScore = agePriority + qualityPriority;
+        priorityReason = `age:${agePriority},quality:${qualityPriority}`;
+      }
+      
+      return {
+        ...stock,
+        priorityScore,
+        priorityReason
+      };
+    });
+    
+    // Sort by priority score (highest first)
+    prioritizedStocks.sort((a, b) => b.priorityScore - a.priorityScore);
+    
+    return prioritizedStocks;
+  } catch (error) {
+    console.error('Error prioritizing stocks:', error);
+    // Fall back to original order if prioritization fails
+    return stocks;
+  }
+}
+
+/**
+ * Get stocks for current rotation batch
+ * @param {Array} prioritizedStocks - Array of prioritized stocks
+ * @returns {Array} Batch of stocks for current rotation
+ */
+function getRotationBatch(prioritizedStocks) {
+  const totalStocks = prioritizedStocks.length;
+  
+  // If we have fewer stocks than batch size, return all
+  if (totalStocks <= ROTATION_BATCH_SIZE) {
+    return prioritizedStocks;
+  }
+  
+  // Calculate start index for this rotation
+  const startIndex = stockRotationIndex % totalStocks;
+  
+  // Get batch wrapping around the end if necessary
+  let batch = [];
+  for (let i = 0; i < ROTATION_BATCH_SIZE; i++) {
+    const index = (startIndex + i) % totalStocks;
+    batch.push(prioritizedStocks[index]);
+  }
+  
+  // Update rotation index for next run
+  stockRotationIndex = (startIndex + ROTATION_BATCH_SIZE) % totalStocks;
+  
+  console.log(`Selected rotation batch ${Math.floor(startIndex / ROTATION_BATCH_SIZE) + 1} of ${Math.ceil(totalStocks / ROTATION_BATCH_SIZE)}`);
+  
+  return batch;
+}
+
+/**
+ * Import stock data for a single symbol with enhanced field coverage
  * @param {Object} stockInfo - Basic stock info
  * @returns {Promise<Object>} Promise resolving to imported stock data
  */
@@ -453,15 +695,17 @@ async function importStock(stockInfo) {
     console.log(`Importing data for ${symbol}...`);
     
     // Make parallel requests for different data types
-    const [profile, quote, ratios, financials] = await Promise.all([
+    const [profile, quote, ratios, financials, keyMetrics, growth] = await Promise.all([
       makeApiRequest(`/profile/${symbol}`).then(data => data && data.length > 0 ? data[0] : null),
       makeApiRequest(`/quote/${symbol}`).then(data => data && data.length > 0 ? data[0] : null),
       makeApiRequest(`/ratios/${symbol}`).then(data => data && data.length > 0 ? data[0] : null),
-      makeApiRequest(`/income-statement/${symbol}?limit=1`).then(data => data && data.length > 0 ? data[0] : null)
+      makeApiRequest(`/income-statement/${symbol}?limit=1`).then(data => data && data.length > 0 ? data[0] : null),
+      makeApiRequest(`/key-metrics/${symbol}`).then(data => data && data.length > 0 ? data[0] : null),
+      makeApiRequest(`/financial-growth/${symbol}`).then(data => data && data.length > 0 ? data[0] : null)
     ]);
     
-    // Process and combine data
-    const stockData = processStockData(stockInfo, profile, quote, ratios, financials);
+    // Process and combine data with enhanced field coverage
+    const stockData = processStockData(stockInfo, profile, quote, ratios, financials, keyMetrics, growth);
     
     // Return processed data
     return stockData;
@@ -472,40 +716,64 @@ async function importStock(stockInfo) {
 }
 
 /**
- * Import all stocks with optimized parallel processing
- * @param {Array} stocks - Array of stock info objects
- * @param {Function} saveCallback - Function to save stock data
- * @param {Function} progressCallback - Function to report progress
+ * Import stocks with enhanced prioritization and rotation
  * @returns {Promise} Promise resolving when import is complete
  */
-async function importAllStocksOptimized(stocks, saveCallback, progressCallback) {
+async function importStocksEnhanced() {
   try {
-    console.log(`Starting optimized import of ${stocks.length} stocks with concurrency ${currentConcurrency}`);
+    console.log('Starting enhanced stock import process...');
     
     // Update import status
     importStatus = {
       status: 'running',
       startTime: new Date(),
       progress: {
-        total: stocks.length,
+        total: 0,
         completed: 0,
         failed: 0
+      },
+      dataQuality: {
+        missingFields: {},
+        validationIssues: {},
+        completenessScore: 100
       }
     };
+    
+    // Get all stock symbols
+    console.log('Getting all stock symbols...');
+    const allStocks = await getAllStockSymbols();
+    
+    // Get existing stocks from database
+    console.log('Getting existing stocks from database...');
+    const Stock = mongoose.model('Stock');
+    const existingStocks = await Stock.find({}, { symbol: 1, lastUpdated: 1, dataQuality: 1 }).lean();
+    
+    console.log(`Found ${existingStocks.length} existing stocks in database`);
+    
+    // Prioritize stocks based on age, quality, etc.
+    const prioritizedStocks = await prioritizeStocks(allStocks, existingStocks);
+    
+    // Get batch for current rotation
+    const batchStocks = getRotationBatch(prioritizedStocks);
+    
+    console.log(`Selected ${batchStocks.length} stocks for this import run`);
+    
+    // Update import status
+    importStatus.progress.total = batchStocks.length;
     
     // Process stocks in batches with adaptive concurrency
     let completed = 0;
     let failed = 0;
     
     // Process in batches
-    for (let i = 0; i < stocks.length; i += currentConcurrency) {
+    for (let i = 0; i < batchStocks.length; i += currentConcurrency) {
       // Check if we're approaching timeout
       if (Date.now() - importStatus.startTime > IMPORT_TIMEOUT) {
         console.log('Import timeout approaching, stopping gracefully');
         break;
       }
       
-      const batch = stocks.slice(i, i + currentConcurrency);
+      const batch = batchStocks.slice(i, i + currentConcurrency);
       
       // Process batch concurrently
       const results = await Promise.allSettled(batch.map(stock => importStock(stock)));
@@ -516,31 +784,34 @@ async function importAllStocksOptimized(stocks, saveCallback, progressCallback) 
         if (result.status === 'fulfilled' && result.value) {
           completed++;
           successfulStocks.push(result.value);
+          
+          // Track data quality issues
+          const stock = result.value;
+          if (stock.dataQuality && stock.dataQuality.missingFields) {
+            stock.dataQuality.missingFields.forEach(field => {
+              importStatus.dataQuality.missingFields[field] = (importStatus.dataQuality.missingFields[field] || 0) + 1;
+            });
+          }
         } else {
           failed++;
         }
       });
       
-      // Save successful stocks in bulk if possible
-      if (successfulStocks.length > 0 && saveCallback) {
-        await saveCallback(successfulStocks);
+      // Save successful stocks in bulk
+      if (successfulStocks.length > 0) {
+        await saveStocksToDB(successfulStocks);
       }
       
       // Update progress
       importStatus.progress = {
-        total: stocks.length,
+        total: batchStocks.length,
         completed,
         failed,
-        remaining: stocks.length - (completed + failed)
+        remaining: batchStocks.length - (completed + failed)
       };
       
-      // Report progress
-      if (progressCallback) {
-        progressCallback(importStatus.progress);
-      }
-      
       // Log progress
-      console.log(`Progress: ${completed + failed}/${stocks.length} (${completed} succeeded, ${failed} failed)`);
+      console.log(`Progress: ${completed + failed}/${batchStocks.length} (${completed} succeeded, ${failed} failed)`);
       
       // No delay between batches to maximize throughput
       // Only add a small delay if we've been rate limited recently
@@ -549,29 +820,40 @@ async function importAllStocksOptimized(stocks, saveCallback, progressCallback) 
       }
     }
     
+    // Calculate overall data quality score
+    const totalFields = Object.keys(importStatus.dataQuality.missingFields).length;
+    const totalMissing = Object.values(importStatus.dataQuality.missingFields).reduce((sum, count) => sum + count, 0);
+    const averageMissingPerStock = totalMissing / Math.max(1, completed);
+    
+    importStatus.dataQuality.completenessScore = Math.max(0, Math.round(100 * (1 - (averageMissingPerStock / totalFields))));
+    
     // Update import status
     importStatus = {
       status: 'completed',
       startTime: importStatus.startTime,
       endTime: new Date(),
       progress: {
-        total: stocks.length,
+        total: batchStocks.length,
         completed,
         failed,
-        remaining: stocks.length - (completed + failed)
-      }
+        remaining: batchStocks.length - (completed + failed)
+      },
+      dataQuality: importStatus.dataQuality
     };
     
     console.log('Import completed successfully');
     console.log(`Imported ${completed} stocks, ${failed} failed`);
+    console.log(`Data quality score: ${importStatus.dataQuality.completenessScore}%`);
+    console.log('Most common missing fields:', importStatus.dataQuality.missingFields);
     
     return {
-      total: stocks.length,
+      total: batchStocks.length,
       completed,
-      failed
+      failed,
+      dataQuality: importStatus.dataQuality
     };
   } catch (error) {
-    console.error(`[API] importAllStocksOptimized: ${error.message}`);
+    console.error(`[API] importStocksEnhanced: ${error.message}`);
     
     // Update import status
     importStatus = {
@@ -579,7 +861,8 @@ async function importAllStocksOptimized(stocks, saveCallback, progressCallback) 
       startTime: importStatus.startTime,
       endTime: new Date(),
       error: error.message,
-      progress: importStatus.progress
+      progress: importStatus.progress,
+      dataQuality: importStatus.dataQuality
     };
     
     throw error;
@@ -681,7 +964,7 @@ async function testApiCallRate(duration = 60) {
  */
 async function runImport() {
   try {
-    console.log('Starting optimized FMP import process (750 calls/minute)...');
+    console.log('Starting enhanced FMP import process...');
     
     // Connect to MongoDB
     console.log(`Connecting to MongoDB at ${MONGODB_URI || 'mongodb://localhost:27017/stocksDB'}...`);
@@ -704,6 +987,18 @@ async function runImport() {
         rotce: Number,
         peRatio: Number,
         dividendYield: Number,
+        // Added fields
+        priceToBook: Number,
+        fcfToNetIncome: Number,
+        revenueGrowth: Number,
+        shareCountGrowth: Number,
+        insiderOwnership: Number,
+        // Quality tracking
+        dataQuality: {
+          missingFields: [String],
+          validationIssues: mongoose.Schema.Types.Mixed,
+          completenessScore: Number
+        },
         score: Number,
         lastUpdated: Date
       });
@@ -711,17 +1006,8 @@ async function runImport() {
       mongoose.model('Stock', stockSchema);
     }
     
-    // Get all stock symbols
-    console.log('Getting all stock symbols...');
-    const stocks = await getAllStockSymbols();
-    
-    // Import all stocks
-    console.log(`Starting import of ${stocks.length} stocks...`);
-    const result = await importAllStocksOptimized(
-      stocks,
-      saveStocksToDB,
-      progress => console.log(`Progress update: ${progress.completed}/${progress.total} stocks processed`)
-    );
+    // Run the enhanced import
+    const result = await importStocksEnhanced();
     
     console.log('Import completed with results:', result);
     
@@ -780,7 +1066,11 @@ if (require.main === module) {
 
 // Export functions for testing or external use
 module.exports = {
-  importAllStocksOptimized,
+  importStocksEnhanced,
   testApiCallRate,
-  runImport
+  runImport,
+  processStockData,
+  validateNumericField,
+  prioritizeStocks,
+  getRotationBatch
 };
