@@ -50,6 +50,110 @@ app.get('/api/stats', async (req, res) => {
   }
 });
 
+// Get stocks with filtering and pagination (UPDATED WITH ROTCE FILTER SUPPORT)
+app.get('/api/stocks', async (req, res) => {
+  try {
+    // Extract existing filter parameters
+    const page = parseInt(req.query.page) || 1;
+    const pageSize = parseInt(req.query.pageSize) || 50;
+    const search = req.query.search || '';
+    
+    // Build filter query
+    const filter = {};
+    
+    // Add search filter if provided
+    if (search) {
+      filter.$or = [
+        { symbol: { $regex: search, $options: 'i' } },
+        { name: { $regex: search, $options: 'i' } }
+      ];
+    }
+    
+    // Add market cap filters if provided
+    if (req.query.minMarketCap) {
+      filter.marketCap = filter.marketCap || {};
+      filter.marketCap.$gte = parseFloat(req.query.minMarketCap);
+    }
+    
+    if (req.query.maxMarketCap) {
+      filter.marketCap = filter.marketCap || {};
+      filter.marketCap.$lte = parseFloat(req.query.maxMarketCap);
+    }
+    
+    // Add volume filters if provided
+    if (req.query.minVolume) {
+      filter.avgDollarVolume = filter.avgDollarVolume || {};
+      filter.avgDollarVolume.$gte = parseFloat(req.query.minVolume);
+    }
+    
+    if (req.query.maxVolume) {
+      filter.avgDollarVolume = filter.avgDollarVolume || {};
+      filter.avgDollarVolume.$lte = parseFloat(req.query.maxVolume);
+    }
+    
+    // Add debt to EBITDA filters if provided
+    if (req.query.minDebtToEBITDA) {
+      filter.netDebtToEBITDA = filter.netDebtToEBITDA || {};
+      filter.netDebtToEBITDA.$gte = parseFloat(req.query.minDebtToEBITDA);
+    }
+    
+    if (req.query.maxDebtToEBITDA) {
+      filter.netDebtToEBITDA = filter.netDebtToEBITDA || {};
+      filter.netDebtToEBITDA.$lte = parseFloat(req.query.maxDebtToEBITDA);
+    }
+    
+    // Add P/E ratio filters if provided
+    if (req.query.minPE) {
+      filter.peRatio = filter.peRatio || {};
+      filter.peRatio.$gte = parseFloat(req.query.minPE);
+    }
+    
+    if (req.query.maxPE) {
+      filter.peRatio = filter.peRatio || {};
+      filter.peRatio.$lte = parseFloat(req.query.maxPE);
+    }
+    
+    // Add ROTCE filters if provided
+    if (req.query.minROTCE) {
+      filter.rotce = filter.rotce || {};
+      filter.rotce.$gte = parseFloat(req.query.minROTCE);
+    }
+    
+    if (req.query.maxROTCE) {
+      filter.rotce = filter.rotce || {};
+      filter.rotce.$lte = parseFloat(req.query.maxROTCE);
+    }
+    
+    // Calculate skip and limit for pagination
+    const skip = (page - 1) * pageSize;
+    const limit = pageSize;
+    
+    // Query database
+    const stocks = await Stock.find(filter)
+      .sort({ marketCap: -1 })
+      .skip(skip)
+      .limit(limit)
+      .lean();
+    
+    // Count total matching stocks for pagination
+    const total = await Stock.countDocuments(filter);
+    
+    // Return response
+    res.json({
+      stocks,
+      pagination: {
+        page,
+        pageSize,
+        total,
+        totalPages: Math.ceil(total / pageSize)
+      }
+    });
+  } catch (error) {
+    console.error('Error fetching stocks:', error);
+    res.status(500).json({ error: 'Failed to fetch stocks' });
+  }
+});
+
 // Health check endpoint
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', timestamp: new Date() });
