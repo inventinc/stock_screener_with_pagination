@@ -1,0 +1,32 @@
+name: Stock Import Automation
+
+on:
+  schedule:
+    - cron: '0 0,12 * * *'  # Runs at midnight and noon UTC
+  workflow_dispatch:  # Allows manual triggering
+
+jobs:
+  import:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30  # Set timeout to match Heroku's limit
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          
+      - name: Install dependencies
+        run: npm ci || npm install
+        
+      - name: Run stock import
+        run: node fmpImport.js
+        env:
+          FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
+          MONGODB_URI: ${{ secrets.MONGODB_URI }}
+          
+      - name: Log completion time
+        run: echo "Import completed at $(date )"
