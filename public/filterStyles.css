@@ -254,16 +254,33 @@
         width: 100%;
         margin-top: 5px;
     }
-    
-    /* Fix for filter content being cut off on mobile */
+}
+
+/* Comprehensive fix for filter content height issues */
+@media (max-width: 767px) {
+    /* Completely disable height transitions on mobile */
     .filters-content {
-        max-height: none !important; /* Override the 1000px max-height */
-        height: auto !important; /* Allow content to determine height */
-        overflow: visible !important; /* Ensure content isn't hidden */
+        transition: none !important;
+        max-height: none !important;
+        height: auto !important;
+        overflow: visible !important;
     }
     
     /* Only apply overflow:hidden when collapsed */
     .filters-content.collapsed {
+        max-height: 0 !important;
+        padding: 0 !important;
         overflow: hidden !important;
+    }
+    
+    /* Ensure filter groups have enough spacing */
+    .filter-group {
+        margin-bottom: 20px;
+    }
+    
+    /* Make sure ROTCE section is fully visible */
+    .filter-group:last-child {
+        margin-bottom: 30px;
+        padding-bottom: 10px;
     }
 }
