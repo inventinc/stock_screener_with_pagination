@@ -230,4 +230,28 @@
     .filter-button.enhanced {
         min-width: 100%;
     }
+    
+    /* Fix for ROTCE filter display issue on mobile */
+    .advanced-filters .filter-row {
+        flex-wrap: wrap;
+    }
+    
+    .advanced-filters label {
+        flex: 0 0 100%;
+        margin-bottom: 5px;
+    }
+    
+    .advanced-filters input[type="number"] {
+        width: 60px; /* Reduced from 80px */
+    }
+    
+    .advanced-filters .filter-inputs {
+        width: 100%;
+        flex-wrap: wrap;
+    }
+    
+    .advanced-filters .filter-note {
+        width: 100%;
+        margin-top: 5px;
+    }
 }
