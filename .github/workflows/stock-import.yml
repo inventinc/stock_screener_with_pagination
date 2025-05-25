@@ -2,13 +2,13 @@ name: Stock Import Automation
 
 on:
   schedule:
-    - cron: '0 0,12 * * *'  # Runs at midnight and noon UTC
+    - cron: '*/30 * * * *'  # Runs every 30 minutes
   workflow_dispatch:  # Allows manual triggering
 
 jobs:
   import:
     runs-on: ubuntu-latest
-    timeout-minutes: 30  # Set timeout to match Heroku's limit
+    timeout-minutes: 25  # Set timeout to match Heroku's limit
     
     steps:
       - name: Checkout code
@@ -23,10 +23,14 @@ jobs:
         run: npm ci || npm install
         
       - name: Run stock import
-        run: node fmpImport.js
+        run: node full_refresh_fmp_import.js
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
           
-      - name: Log completion time
-        run: echo "Import completed at $(date )"
+      - name: Upload checkpoint if job fails
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: import-checkpoint
+          path: import_checkpoint.json
