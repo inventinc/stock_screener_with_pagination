@@ -1,12 +1,11 @@
 /**
- * Fixed PaginatedApp.js with Multi-Select Filter Logic and Enhanced Tooltips
+ * Fixed PaginatedApp.js with Multi-Select Filter Logic
  * 
  * This version fixes:
  * 1. Debt filter functionality
  * 2. ROTCE filter support
  * 3. Filter parameter mapping
  * 4. Multi-select filter logic for market cap, volume, and other categories
- * 5. Tooltip functionality with modern icons
  */
 
 document.addEventListener('DOMContentLoaded', function() {
@@ -25,14 +24,6 @@ document.addEventListener('DOMContentLoaded', function() {
     const filtersContent = document.getElementById('filters-content');
     const cardViewButton = document.getElementById('card-view-button');
     const tableViewButton = document.getElementById('table-view-button');
-    
-    // Load Font Awesome if not already loaded
-    if (!document.querySelector('link[href*="font-awesome"]')) {
-        const fontAwesome = document.createElement('link');
-        fontAwesome.rel = 'stylesheet';
-        fontAwesome.href = 'https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css';
-        document.head.appendChild(fontAwesome);
-    }
     
     // State
     let currentView = 'card'; // 'card' or 'table'
@@ -305,70 +296,6 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Helper function to get appropriate icon and tooltip for metrics
-     * @param {String} metricName - Name of the metric
-     * @param {*} value - Value of the metric
-     * @param {Boolean} calculated - Whether the value was calculated
-     * @returns {Object} Object with icon and tooltipText properties
-     */
-    function getMetricInfo(metricName, value, calculated = false) {
-        let icon = '';
-        let tooltipText = '';
-        
-        // Default is N/A
-        if (value === null || value === undefined || value === 'N/A') {
-            icon = '<i class="fas fa-exclamation-circle" style="margin-left: 4px; font-size: 0.8em; color: #d9534f;"></i>';
-            tooltipText = 'Data not available from API';
-            return { icon, tooltipText };
-        }
-        
-        // Specific metric handling
-        switch(metricName) {
-            case 'netDebtToEBITDA':
-                if (calculated) {
-                    icon = '<i class="fas fa-calculator" style="margin-left: 4px; font-size: 0.8em; color: #f0ad4e;"></i>';
-                    tooltipText = 'Calculated from financial components';
-                } else {
-                    icon = '<i class="fas fa-database" style="margin-left: 4px; font-size: 0.8em; color: #5cb85c;"></i>';
-                    tooltipText = 'Direct value from API';
-                }
-                
-                if (value < 1) {
-                    tooltipText += '. Low debt relative to earnings.';
-                } else if (value < 3) {
-                    tooltipText += '. Moderate debt relative to earnings.';
-                } else {
-                    tooltipText += '. High debt relative to earnings.';
-                }
-                break;
-                
-            case 'rotce':
-                if (calculated) {
-                    icon = '<i class="fas fa-calculator" style="margin-left: 4px; font-size: 0.8em; color: #f0ad4e;"></i>';
-                    tooltipText = 'Calculated from financial components';
-                } else {
-                    icon = '<i class="fas fa-database" style="margin-left: 4px; font-size: 0.8em; color: #5cb85c;"></i>';
-                    tooltipText = 'Direct value from API';
-                }
-                
-                if (value > 0.2) {
-                    tooltipText += '. Excellent return on tangible capital.';
-                } else if (value > 0.1) {
-                    tooltipText += '. Good return on tangible capital.';
-                } else {
-                    tooltipText += '. Below average return on tangible capital.';
-                }
-                break;
-                
-            default:
-                icon = '<i class="fas fa-info-circle" style="margin-left: 4px; font-size: 0.8em; color: #5bc0de;"></i>';
-                tooltipText = 'Direct value from API';
-        }
-        
-        return { icon, tooltipText };
-    }
-    
-    /**
      * DIRECT RENDERING FIX: Direct DOM rendering approach
      * This bypasses any potential issues with the normal rendering pipeline
      */
@@ -421,11 +348,6 @@ document.addEventListener('DOMContentLoaded', function() {
         // Force browser to repaint
         forceRepaint();
         
-        // Initialize tooltips after rendering
-        if (window.initTooltip) {
-            window.initTooltip();
-        }
-        
         console.log('DIRECT RENDERING: Completed rendering', stocks.length, 'stocks');
     }
     
@@ -476,20 +398,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 card.classList.add('incomplete-data');
             }
             
-            // Get metric info for Debt/EBITDA
-            const debtEbitdaInfo = getMetricInfo(
-                'netDebtToEBITDA', 
-                stock.netDebtToEBITDA, 
-                stock.netDebtToEBITDACalculated
-            );
-            
-            // Get metric info for ROTCE
-            const rotceInfo = getMetricInfo(
-                'rotce', 
-                stock.rotce, 
-                stock.rotceCalculationMethod !== undefined
-            );
-            
             // Create card content
             card.innerHTML = `
                 <div class="stock-header">
@@ -500,27 +408,27 @@ document.addEventListener('DOMContentLoaded', function() {
                 <div class="stock-metrics">
                     <div class="metric">
                         <div class="metric-label">Price</div>
-                        <div class="metric-value" title="Current stock price">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
+                        <div class="metric-value">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">Market Cap</div>
-                        <div class="metric-value" title="Total market value of the company">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
+                        <div class="metric-value">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">P/E Ratio</div>
-                        <div class="metric-value" title="Price to Earnings ratio - lower values may indicate better value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
+                        <div class="metric-value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">Dividend Yield</div>
-                        <div class="metric-value" title="Annual dividend as percentage of share price">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
+                        <div class="metric-value">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">Debt/EBITDA</div>
-                        <div class="metric-value" title="${debtEbitdaInfo.tooltipText}">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}${debtEbitdaInfo.icon}</div>
+                        <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">ROTCE</div>
-                        <div class="metric-value" title="${rotceInfo.tooltipText}">${stock.rotce ? (stock.rotce * 100).toFixed(2) + '%' : 'N/A'}${rotceInfo.icon}</div>
+                        <div class="metric-value">${stock.rotce ? (stock.rotce * 100).toFixed(2) + '%' : 'N/A'}</div>
                     </div>
                 </div>
             `;
@@ -567,30 +475,16 @@ document.addEventListener('DOMContentLoaded', function() {
         stocks.forEach(stock => {
             const tr = document.createElement('tr');
             
-            // Get metric info for Debt/EBITDA
-            const debtEbitdaInfo = getMetricInfo(
-                'netDebtToEBITDA', 
-                stock.netDebtToEBITDA, 
-                stock.netDebtToEBITDACalculated
-            );
-            
-            // Get metric info for ROTCE
-            const rotceInfo = getMetricInfo(
-                'rotce', 
-                stock.rotce, 
-                stock.rotceCalculationMethod !== undefined
-            );
-            
             tr.innerHTML = `
                 <td>${stock.symbol}</td>
                 <td>${stock.name || 'Unknown'}</td>
                 <td>${stock.exchange || 'N/A'}</td>
-                <td title="Current stock price">${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</td>
-                <td title="Total market value of the company">${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</td>
-                <td title="Price to Earnings ratio - lower values may indicate better value">${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</td>
-                <td title="Annual dividend as percentage of share price">${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</td>
-                <td title="${debtEbitdaInfo.tooltipText}">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}${debtEbitdaInfo.icon}</td>
-                <td title="${rotceInfo.tooltipText}">${stock.rotce ? (stock.rotce * 100).toFixed(2) + '%' : 'N/A'}${rotceInfo.icon}</td>
+                <td>${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</td>
+                <td>${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</td>
+                <td>${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</td>
+                <td>${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</td>
+                <td>${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</td>
+                <td>${stock.rotce ? (stock.rotce * 100).toFixed(2) + '%' : 'N/A'}</td>
             `;
             
             tbody.appendChild(tr);
@@ -607,7 +501,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Object} stats - Stats data
      */
     function updateStats(stats) {
-        console.log('Updating stats:', stats);
+        console.log('Updating stats with', stats);
         
         if (!stats) {
             console.error('Invalid stats data');
@@ -619,24 +513,23 @@ document.addEventListener('DOMContentLoaded', function() {
         nyseStocksElement.textContent = stats.nyseStocks || 0;
         nasdaqStocksElement.textContent = stats.nasdaqStocks || 0;
         
-        // Update last updated timestamp
+        // Update last updated time
         if (stats.lastUpdated) {
             const date = new Date(stats.lastUpdated);
-            lastUpdatedElement.textContent = `${date.toLocaleDateString()}, ${date.toLocaleTimeString()}`;
+            lastUpdatedElement.textContent = date.toLocaleString();
         } else {
-            lastUpdatedElement.textContent = 'Unknown';
+            lastUpdatedElement.textContent = 'Never';
         }
     }
     
     /**
      * Update API status indicator
-     * @param {Boolean} isConnected - Whether API is connected
+     * @param {Boolean} connected - Whether API is connected
      */
-    function updateApiStatus(isConnected) {
-        console.log('Updating API status:', isConnected);
-        
-        apiStatusIndicator.classList.toggle('connected', isConnected);
-        apiStatusText.textContent = isConnected ? 'connected' : 'disconnected';
+    function updateApiStatus(connected) {
+        apiStatusIndicator.classList.toggle('connected', connected);
+        apiStatusIndicator.classList.toggle('disconnected', !connected);
+        apiStatusText.textContent = connected ? 'connected' : 'disconnected';
     }
     
     /**
@@ -644,8 +537,6 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Boolean} loading - Whether app is loading
      */
     function setLoading(loading) {
-        console.log('Setting loading state:', loading);
-        
         isLoading = loading;
         document.body.classList.toggle('loading', loading);
     }
@@ -655,12 +546,12 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Number} page - New page number
      */
     function handlePageChange(page) {
-        console.log('Handling page change to', page);
+        console.log('Page changed to', page);
         
         // Update URL with new page
         const url = new URL(window.location);
         url.searchParams.set('page', page);
-        window.history.pushState({}, '', url);
+        window.history.replaceState({}, '', url);
         
         // Load new page
         loadStocksPage(page, pageSize);
@@ -668,12 +559,10 @@ document.addEventListener('DOMContentLoaded', function() {
     
     /**
      * Handle search input
-     * @param {Event} event - Input event
      */
-    function handleSearch(event) {
-        console.log('Handling search:', event.target.value);
-        
-        const searchTerm = event.target.value.trim();
+    function handleSearch() {
+        const searchTerm = searchInput.value.trim();
+        console.log('Search term:', searchTerm);
         
         // Update active filters
         if (searchTerm) {
@@ -682,19 +571,17 @@ document.addEventListener('DOMContentLoaded', function() {
             delete activeFilters.search;
         }
         
-        // Reset to first page and reload
+        // Reset to first page and load
         currentPage = 1;
         loadStocksPage(currentPage, pageSize);
     }
     
     /**
-     * Toggle filters visibility
+     * Toggle filters panel
      */
     function toggleFilters() {
-        console.log('Toggling filters');
-        
         filtersContent.classList.toggle('collapsed');
-        filtersToggle.classList.toggle('collapsed');
+        filtersToggle.querySelector('.filters-toggle').classList.toggle('collapsed');
     }
     
     /**
@@ -702,20 +589,16 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {String} view - View type ('card' or 'table')
      */
     function switchView(view) {
-        console.log('Switching view to', view);
-        
-        if (view === currentView) {
-            return;
-        }
+        if (currentView === view) return;
         
         currentView = view;
         
         // Update URL with new view
         const url = new URL(window.location);
         url.searchParams.set('view', view);
-        window.history.pushState({}, '', url);
+        window.history.replaceState({}, '', url);
         
-        // Re-render stocks
+        // Render stocks in new view
         directRenderStocks(currentStocks);
     }
     
@@ -1022,41 +905,38 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Format large number with suffix (K, M, B, T)
-     * @param {Number} value - Number value
+     * Format large number with abbreviation
+     * @param {Number} value - Large number
      * @returns {String} Formatted number string
      */
     function formatLargeNumber(value) {
         if (value === undefined || value === null) return null;
         
-        if (value >= 1000000000000) {
-            return '$' + (value / 1000000000000).toFixed(2) + 'T';
-        } else if (value >= 1000000000) {
-            return '$' + (value / 1000000000).toFixed(2) + 'B';
-        } else if (value >= 1000000) {
-            return '$' + (value / 1000000).toFixed(2) + 'M';
-        } else if (value >= 1000) {
-            return '$' + (value / 1000).toFixed(2) + 'K';
+        if (value >= 1e12) {
+            return '$' + (value / 1e12).toFixed(2) + 'T';
+        } else if (value >= 1e9) {
+            return '$' + (value / 1e9).toFixed(2) + 'B';
+        } else if (value >= 1e6) {
+            return '$' + (value / 1e6).toFixed(2) + 'M';
+        } else if (value >= 1e3) {
+            return '$' + (value / 1e3).toFixed(2) + 'K';
         } else {
             return '$' + value.toFixed(2);
         }
     }
     
     /**
-     * Debounce function to limit function calls
+     * Debounce function
      * @param {Function} func - Function to debounce
      * @param {Number} wait - Wait time in milliseconds
      * @returns {Function} Debounced function
      */
     function debounce(func, wait) {
         let timeout;
-        
         return function() {
             const context = this;
             const args = arguments;
-            
             clearTimeout(timeout);
-            
             timeout = setTimeout(() => {
                 func.apply(context, args);
             }, wait);
