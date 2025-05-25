@@ -724,37 +724,35 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {HTMLElement} button - Filter button element
      */
     function toggleFilter(button) {
-        console.log('Toggling filter:', button.dataset.filter, button.dataset.value);
-        
         const filter = button.dataset.filter;
         const value = button.dataset.value;
         
-        // Toggle button selection
-        button.classList.toggle('selected');
+        console.log('Toggle filter:', filter, value);
+        
+        // Toggle active state
+        button.classList.toggle('active');
         
         // Update active filters
         if (!activeFilters[filter]) {
             activeFilters[filter] = [];
         }
         
-        if (button.classList.contains('selected')) {
-            // Add filter value
+        if (button.classList.contains('active')) {
+            // Add filter
             if (!activeFilters[filter].includes(value)) {
                 activeFilters[filter].push(value);
             }
         } else {
-            // Remove filter value
+            // Remove filter
             activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
-            
-            // Remove empty filter
             if (activeFilters[filter].length === 0) {
                 delete activeFilters[filter];
             }
         }
         
-        console.log('Updated active filters:', activeFilters);
+        console.log('Active filters:', activeFilters);
         
-        // Reset to first page and reload
+        // Reset to first page and load
         currentPage = 1;
         loadStocksPage(currentPage, pageSize);
     }
@@ -764,78 +762,100 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {HTMLElement} button - Preset button element
      */
     function togglePreset(button) {
-        console.log('Toggling preset:', button.dataset.preset);
-        
         const preset = button.dataset.preset;
         
-        // Clear existing filters
+        console.log('Toggle preset:', preset);
+        
+        // Clear all active filters
         activeFilters = {};
         
-        // Remove selection from all filter buttons
+        // Remove active class from all filter buttons
         document.querySelectorAll('.filter-button').forEach(btn => {
-            btn.classList.remove('selected');
+            btn.classList.remove('active');
         });
         
-        // Apply preset filters
-        switch (preset) {
-            case 'value':
-                // Value stocks: Low P/E, Low Debt, High Dividend
-                selectFilterButton('pe', 'low');
-                selectFilterButton('debt', 'low');
-                selectFilterButton('dividend', 'high');
-                break;
-                
-            case 'growth':
-                // Growth stocks: High P/E, High Volume
-                selectFilterButton('pe', 'high');
-                selectFilterButton('volume', 'high');
-                break;
-                
-            case 'dividend':
-                // Dividend stocks: High Dividend, Large Cap
-                selectFilterButton('dividend', 'high');
-                selectFilterButton('marketCap', 'large');
-                break;
-                
-            case 'quality':
-                // Quality stocks: Low Debt, High ROTCE
-                selectFilterButton('debt', 'low');
-                selectFilterButton('rotce', 'excellent');
-                break;
+        // Remove active class from all preset buttons
+        document.querySelectorAll('.preset-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Toggle active state
+        button.classList.toggle('active');
+        
+        // Apply preset filters if active
+        if (button.classList.contains('active')) {
+            applyPreset(preset);
         }
         
-        console.log('Applied preset filters:', activeFilters);
+        console.log('Active filters after preset:', activeFilters);
         
-        // Reset to first page and reload
+        // Reset to first page and load
         currentPage = 1;
         loadStocksPage(currentPage, pageSize);
     }
     
     /**
-     * Select a filter button and update active filters
-     * @param {String} filter - Filter name
-     * @param {String} value - Filter value
+     * Apply preset filters
+     * @param {String} preset - Preset name
      */
-    function selectFilterButton(filter, value) {
-        const button = document.querySelector(`.filter-button[data-filter="${filter}"][data-value="${value}"]`);
-        
-        if (button) {
-            button.classList.add('selected');
-            
-            if (!activeFilters[filter]) {
-                activeFilters[filter] = [];
-            }
-            
-            if (!activeFilters[filter].includes(value)) {
-                activeFilters[filter].push(value);
-            }
+    function applyPreset(preset) {
+        switch (preset) {
+            case 'value':
+                // Value stocks preset
+                activeFilters.valuation = ['undervalued'];
+                activeFilters.debt = ['low', 'medium'];
+                activeFilters.rotce = ['good', 'excellent']; // Added ROTCE filter
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="valuation"][data-value="undervalued"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="low"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="medium"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="rotce"][data-value="good"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="rotce"][data-value="excellent"]').classList.add('active');
+                break;
+                
+            case 'growth':
+                // Growth stocks preset
+                activeFilters.valuation = ['fair', 'overvalued'];
+                activeFilters.market_cap = ['mid', 'large'];
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="valuation"][data-value="fair"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="valuation"][data-value="overvalued"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="mid"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="large"]').classList.add('active');
+                break;
+                
+            case 'dividend':
+                // Dividend stocks preset
+                activeFilters.market_cap = ['large'];
+                activeFilters.debt = ['low', 'medium'];
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="large"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="low"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="medium"]').classList.add('active');
+                break;
+                
+            case 'quality':
+                // Quality stocks preset
+                activeFilters.market_cap = ['large', 'mid'];
+                activeFilters.debt = ['low'];
+                activeFilters.rotce = ['excellent']; // Added ROTCE filter
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="large"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="mid"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="low"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="rotce"][data-value="excellent"]').classList.add('active');
+                break;
         }
     }
     
     /**
-     * Convert active filters to backend parameters
+     * FIXED: Convert filters to backend parameters with improved multi-select handling
      * @param {Object} filters - Active filters
-     * @returns {URLSearchParams} - URL search params
+     * @returns {URLSearchParams} Backend parameters
      */
     function convertFiltersToBackendParams(filters) {
         console.log('Converting filters to backend params:', filters);
@@ -847,163 +867,133 @@ document.addEventListener('DOMContentLoaded', function() {
             params.append('search', filters.search);
         }
         
-        // Process market cap filters
-        if (filters.marketCap && filters.marketCap.length > 0) {
-            let minMarketCap = 0;
-            let maxMarketCap = Infinity;
+        // FIXED: Add market cap filters with improved multi-select handling
+        if (filters.market_cap && filters.market_cap.length > 0) {
+            // Find the lowest minimum value among selected options
+            let minMarketCap = null;
+            if (filters.market_cap.includes('micro')) minMarketCap = 0;
+            else if (filters.market_cap.includes('small')) minMarketCap = 300000000;
+            else if (filters.market_cap.includes('mid')) minMarketCap = 2000000000;
+            else if (filters.market_cap.includes('large')) minMarketCap = 10000000000;
             
-            filters.marketCap.forEach(value => {
-                switch (value) {
-                    case 'large':
-                        minMarketCap = Math.max(minMarketCap, 10000000000); // $10B+
-                        break;
-                    case 'mid':
-                        minMarketCap = Math.max(minMarketCap, 2000000000); // $2B+
-                        maxMarketCap = Math.min(maxMarketCap, 10000000000); // <$10B
-                        break;
-                    case 'small':
-                        minMarketCap = Math.max(minMarketCap, 300000000); // $300M+
-                        maxMarketCap = Math.min(maxMarketCap, 2000000000); // <$2B
-                        break;
-                    case 'micro':
-                        maxMarketCap = Math.min(maxMarketCap, 300000000); // <$300M
-                        break;
-                }
-            });
+            // Find the highest maximum value among selected options
+            let maxMarketCap = null;
+            if (filters.market_cap.includes('large')) maxMarketCap = null; // No upper limit
+            else if (filters.market_cap.includes('mid')) maxMarketCap = 10000000000;
+            else if (filters.market_cap.includes('small')) maxMarketCap = 2000000000;
+            else if (filters.market_cap.includes('micro')) maxMarketCap = 300000000;
             
-            if (minMarketCap > 0) {
-                params.append('minMarketCap', minMarketCap);
+            // Apply the parameters
+            if (minMarketCap !== null) {
+                params.append('minMarketCap', minMarketCap.toString());
             }
             
-            if (maxMarketCap < Infinity) {
-                params.append('maxMarketCap', maxMarketCap);
+            if (maxMarketCap !== null) {
+                params.append('maxMarketCap', maxMarketCap.toString());
             }
         }
         
-        // Process volume filters
+        // FIXED: Add volume filters with improved multi-select handling
         if (filters.volume && filters.volume.length > 0) {
-            let minVolume = 0;
-            let maxVolume = Infinity;
+            // Find the lowest minimum value among selected options
+            let minVolume = null;
+            if (filters.volume.includes('low')) minVolume = 0;
+            else if (filters.volume.includes('medium')) minVolume = 1000000;
+            else if (filters.volume.includes('high')) minVolume = 5000000;
             
-            filters.volume.forEach(value => {
-                switch (value) {
-                    case 'high':
-                        minVolume = Math.max(minVolume, 5000000); // $5M+
-                        break;
-                    case 'medium':
-                        minVolume = Math.max(minVolume, 1000000); // $1M+
-                        maxVolume = Math.min(maxVolume, 5000000); // <$5M
-                        break;
-                    case 'low':
-                        maxVolume = Math.min(maxVolume, 1000000); // <$1M
-                        break;
-                }
-            });
+            // Find the highest maximum value among selected options
+            let maxVolume = null;
+            if (filters.volume.includes('high')) maxVolume = null; // No upper limit
+            else if (filters.volume.includes('medium')) maxVolume = 5000000;
+            else if (filters.volume.includes('low')) maxVolume = 1000000;
             
-            if (minVolume > 0) {
-                params.append('minVolume', minVolume);
+            // Apply the parameters
+            if (minVolume !== null) {
+                params.append('minVolume', minVolume.toString());
             }
             
-            if (maxVolume < Infinity) {
-                params.append('maxVolume', maxVolume);
+            if (maxVolume !== null) {
+                params.append('maxVolume', maxVolume.toString());
             }
         }
         
-        // Process debt filters
+        // FIXED: Add debt filters with improved multi-select handling
         if (filters.debt && filters.debt.length > 0) {
-            let minDebtToEBITDA = 0;
-            let maxDebtToEBITDA = Infinity;
+            // Find the lowest minimum value among selected options
+            let minDebtToEBITDA = null;
+            if (filters.debt.includes('low')) minDebtToEBITDA = 0;
+            else if (filters.debt.includes('medium')) minDebtToEBITDA = 0.5;
+            else if (filters.debt.includes('high')) minDebtToEBITDA = 1.5;
             
-            filters.debt.forEach(value => {
-                switch (value) {
-                    case 'low':
-                        maxDebtToEBITDA = Math.min(maxDebtToEBITDA, 0.5); // <0.5x
-                        break;
-                    case 'medium':
-                        minDebtToEBITDA = Math.max(minDebtToEBITDA, 0.5); // 0.5x+
-                        maxDebtToEBITDA = Math.min(maxDebtToEBITDA, 1.5); // <1.5x
-                        break;
-                    case 'high':
-                        minDebtToEBITDA = Math.max(minDebtToEBITDA, 1.5); // 1.5x+
-                        break;
-                }
-            });
+            // Find the highest maximum value among selected options
+            let maxDebtToEBITDA = null;
+            if (filters.debt.includes('high')) maxDebtToEBITDA = null; // No upper limit
+            else if (filters.debt.includes('medium')) maxDebtToEBITDA = 1.5;
+            else if (filters.debt.includes('low')) maxDebtToEBITDA = 0.5;
             
-            if (minDebtToEBITDA > 0) {
-                params.append('minDebtToEBITDA', minDebtToEBITDA);
+            // Apply the parameters
+            if (minDebtToEBITDA !== null) {
+                params.append('minDebtToEBITDA', minDebtToEBITDA.toString());
             }
             
-            if (maxDebtToEBITDA < Infinity) {
-                params.append('maxDebtToEBITDA', maxDebtToEBITDA);
+            if (maxDebtToEBITDA !== null) {
+                params.append('maxDebtToEBITDA', maxDebtToEBITDA.toString());
             }
         }
         
-        // Process P/E ratio filters
-        if (filters.pe && filters.pe.length > 0) {
-            let minPE = 0;
-            let maxPE = Infinity;
+        // FIXED: Add valuation filters with improved multi-select handling
+        if (filters.valuation && filters.valuation.length > 0) {
+            // Find the lowest minimum value among selected options
+            let minPE = null;
+            if (filters.valuation.includes('undervalued')) minPE = 0;
+            else if (filters.valuation.includes('fair')) minPE = 15;
+            else if (filters.valuation.includes('overvalued')) minPE = 25;
             
-            filters.pe.forEach(value => {
-                switch (value) {
-                    case 'low':
-                        maxPE = Math.min(maxPE, 15); // <15
-                        break;
-                    case 'medium':
-                        minPE = Math.max(minPE, 15); // 15+
-                        maxPE = Math.min(maxPE, 25); // <25
-                        break;
-                    case 'high':
-                        minPE = Math.max(minPE, 25); // 25+
-                        break;
-                }
-            });
+            // Find the highest maximum value among selected options
+            let maxPE = null;
+            if (filters.valuation.includes('overvalued')) maxPE = null; // No upper limit
+            else if (filters.valuation.includes('fair')) maxPE = 25;
+            else if (filters.valuation.includes('undervalued')) maxPE = 15;
             
-            if (minPE > 0) {
-                params.append('minPE', minPE);
+            // Apply the parameters
+            if (minPE !== null) {
+                params.append('minPE', minPE.toString());
             }
             
-            if (maxPE < Infinity) {
-                params.append('maxPE', maxPE);
+            if (maxPE !== null) {
+                params.append('maxPE', maxPE.toString());
             }
         }
         
-        // Process ROTCE filters
+        // FIXED: Add ROTCE filters with improved multi-select handling
         if (filters.rotce && filters.rotce.length > 0) {
-            let minROTCE = 0;
-            let maxROTCE = Infinity;
+            // Find the lowest minimum value among selected options
+            let minROTCE = null;
+            if (filters.rotce.includes('poor')) minROTCE = 0;
+            else if (filters.rotce.includes('below_average')) minROTCE = 0.05;
+            else if (filters.rotce.includes('average')) minROTCE = 0.1;
+            else if (filters.rotce.includes('good')) minROTCE = 0.15;
+            else if (filters.rotce.includes('excellent')) minROTCE = 0.2;
             
-            filters.rotce.forEach(value => {
-                switch (value) {
-                    case 'excellent':
-                        minROTCE = Math.max(minROTCE, 0.2); // 20%+
-                        break;
-                    case 'good':
-                        minROTCE = Math.max(minROTCE, 0.15); // 15%+
-                        maxROTCE = Math.min(maxROTCE, 0.2); // <20%
-                        break;
-                    case 'average':
-                        minROTCE = Math.max(minROTCE, 0.1); // 10%+
-                        maxROTCE = Math.min(maxROTCE, 0.15); // <15%
-                        break;
-                    case 'belowAverage':
-                        minROTCE = Math.max(minROTCE, 0.05); // 5%+
-                        maxROTCE = Math.min(maxROTCE, 0.1); // <10%
-                        break;
-                    case 'poor':
-                        maxROTCE = Math.min(maxROTCE, 0.05); // <5%
-                        break;
-                }
-            });
+            // Find the highest maximum value among selected options
+            let maxROTCE = null;
+            if (filters.rotce.includes('excellent')) maxROTCE = null; // No upper limit
+            else if (filters.rotce.includes('good')) maxROTCE = 0.2;
+            else if (filters.rotce.includes('average')) maxROTCE = 0.15;
+            else if (filters.rotce.includes('below_average')) maxROTCE = 0.1;
+            else if (filters.rotce.includes('poor')) maxROTCE = 0.05;
             
-            if (minROTCE > 0) {
-                params.append('minROTCE', minROTCE);
+            // Apply the parameters
+            if (minROTCE !== null) {
+                params.append('minROTCE', minROTCE.toString());
             }
             
-            if (maxROTCE < Infinity) {
-                params.append('maxROTCE', maxROTCE);
+            if (maxROTCE !== null) {
+                params.append('maxROTCE', maxROTCE.toString());
             }
         }
         
+        console.log('Converted params:', params.toString());
         return params;
     }
     
@@ -1011,8 +1001,6 @@ document.addEventListener('DOMContentLoaded', function() {
      * Handle window resize
      */
     function handleResize() {
-        console.log('Handling window resize');
-        
         // Re-render stocks to adjust layout
         directRenderStocks(currentStocks);
     }
@@ -1023,11 +1011,14 @@ document.addEventListener('DOMContentLoaded', function() {
      * @returns {String} Formatted currency string
      */
     function formatCurrency(value) {
-        if (value === null || value === undefined) {
-            return null;
-        }
+        if (value === undefined || value === null) return null;
         
-        return '$' + value.toFixed(2);
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
     }
     
     /**
@@ -1036,9 +1027,7 @@ document.addEventListener('DOMContentLoaded', function() {
      * @returns {String} Formatted number string
      */
     function formatLargeNumber(value) {
-        if (value === null || value === undefined) {
-            return null;
-        }
+        if (value === undefined || value === null) return null;
         
         if (value >= 1000000000000) {
             return '$' + (value / 1000000000000).toFixed(2) + 'T';
