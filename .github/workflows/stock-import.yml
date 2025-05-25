@@ -23,7 +23,7 @@ jobs:
         run: npm ci || npm install
         
       - name: Run stock import
-        run: node full_refresh_fmp_import.js
+        run: node fmpImport.js
         env:
           FMP_API_KEY: ${{ secrets.FMP_API_KEY }}
           MONGODB_URI: ${{ secrets.MONGODB_URI }}
