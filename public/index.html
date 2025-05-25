@@ -500,6 +500,34 @@
             max-width: 300px;
         }
         
+        /* Empty State */
+        .empty-state {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 40px 20px;
+            text-align: center;
+        }
+        
+        .empty-icon {
+            font-size: 48px;
+            margin-bottom: 16px;
+            color: #ccc;
+        }
+        
+        .empty-title {
+            font-size: 20px;
+            font-weight: 600;
+            margin-bottom: 8px;
+            color: #666;
+        }
+        
+        .empty-message {
+            font-size: 16px;
+            color: #999;
+        }
+        
         /* Responsive Adjustments */
         @media (max-width: 768px) {
             .stats-container {
@@ -632,7 +660,7 @@
                 <div class="filter-group">
                     <div class="filter-group-title">
                         Debt
-                        <span class="info-icon" title="Net Debt to EBITDA ratio">ⓘ</span>
+                        <span class="info-icon" title="Debt to EBITDA ratio (lower is better)">ⓘ</span>
                     </div>
                     <div class="filter-buttons">
                         <button class="filter-button" data-filter="debt" data-value="low">
@@ -661,6 +689,31 @@
                         </button>
                         <button class="filter-button" data-filter="valuation" data-value="overvalued">
                             <span class="icon">💎</span> Overvalued (P/E >25)
+                        </button>
+                    </div>
+                </div>
+                
+                <!-- ROTCE Filter Section -->
+                <div class="filter-group">
+                    <div class="filter-group-title">
+                        ROTCE
+                        <span class="info-icon" title="Return on Tangible Common Equity (higher is better)">ⓘ</span>
+                    </div>
+                    <div class="filter-buttons">
+                        <button class="filter-button" data-filter="rotce" data-value="excellent">
+                            <span class="icon">🌟</span> Excellent (>20%)
+                        </button>
+                        <button class="filter-button" data-filter="rotce" data-value="good">
+                            <span class="icon">🌟</span> Good (15-20%)
+                        </button>
+                        <button class="filter-button" data-filter="rotce" data-value="average">
+                            <span class="icon">🌟</span> Average (10-15%)
+                        </button>
+                        <button class="filter-button" data-filter="rotce" data-value="below_average">
+                            <span class="icon">🌟</span> Below Average (5-10%)
+                        </button>
+                        <button class="filter-button" data-filter="rotce" data-value="poor">
+                            <span class="icon">🌟</span> Poor (<5%)
                         </button>
                     </div>
                 </div>
@@ -696,9 +749,8 @@
     </div>
     <div class="loading-progress-text">Loading...</div>
     
-    <!-- Scripts -->
     <script src="tooltip.js"></script>
-<script src="pagination.js"></script>
-<script src="paginatedApp.js"></script>
+    <script src="pagination.js"></script>
+    <script src="paginatedApp.js"></script>
 </body>
 </html>

@@ -1,16 +1,12 @@
 /**
- * PaginatedStockApp - Stock screener application with pagination and adaptive card view
- * FINAL FIX VERSION - Combines pagination fix with direct DOM rendering
+ * Fixed PaginatedApp.js with ROTCE Filter Support and Debt Filter Fix
  * 
- * Features:
- * - Classic pagination with modern UX
- * - Adaptive card heights for mobile
- * - Responsive design for all devices
- * - Fixed filter functionality with proper parameter mapping
- * - Fixed pagination initialization and updates
- * - Direct DOM rendering for reliable stock display
- * - Added ROTCE (Return on Tangible Common Equity) filter
+ * This version fixes the issues with:
+ * 1. Debt filter functionality
+ * 2. ROTCE filter support
+ * 3. Filter parameter mapping
  */
+
 document.addEventListener('DOMContentLoaded', function() {
     // DOM Elements
     const stockCardsContainer = document.getElementById('stock-cards');
@@ -294,11 +290,6 @@ document.addEventListener('DOMContentLoaded', function() {
                 stock.formattedVolume = formatLargeNumber(stock.avgDollarVolume);
             }
             
-            // Format ROTCE for display if available
-            if (stock.rotce) {
-                stock.formattedRotce = (stock.rotce * 100).toFixed(2) + '%';
-            }
-            
             return stock;
         });
     }
@@ -436,16 +427,16 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="metric">
                         <div class="metric-label">ROTCE</div>
-                        <div class="metric-value">${stock.rotce ? stock.formattedRotce : 'N/A'}</div>
+                        <div class="metric-value">${stock.rotce ? (stock.rotce * 100).toFixed(2) + '%' : 'N/A'}</div>
                     </div>
                 </div>
             `;
             
-            // Append card to fragment
+            // Add card to fragment
             fragment.appendChild(card);
         });
         
-        // Append fragment to container
+        // Add fragment to container
         stockCardsContainer.appendChild(fragment);
     }
     
@@ -465,6 +456,7 @@ document.addEventListener('DOMContentLoaded', function() {
             <tr>
                 <th>Symbol</th>
                 <th>Name</th>
+                <th>Exchange</th>
                 <th>Price</th>
                 <th>Market Cap</th>
                 <th>P/E Ratio</th>
@@ -481,370 +473,26 @@ document.addEventListener('DOMContentLoaded', function() {
         // Add rows for each stock
         stocks.forEach(stock => {
             const tr = document.createElement('tr');
+            
             tr.innerHTML = `
-                <td class="stock-symbol-cell">${stock.symbol}</td>
+                <td>${stock.symbol}</td>
                 <td>${stock.name || 'Unknown'}</td>
+                <td>${stock.exchange || 'N/A'}</td>
                 <td>${stock.formattedPrice || formatCurrency(stock.price) || 'N/A'}</td>
                 <td>${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</td>
                 <td>${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</td>
                 <td>${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</td>
                 <td>${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</td>
-                <td>${stock.rotce ? stock.formattedRotce : 'N/A'}</td>
+                <td>${stock.rotce ? (stock.rotce * 100).toFixed(2) + '%' : 'N/A'}</td>
             `;
+            
             tbody.appendChild(tr);
         });
         
         table.appendChild(tbody);
+        
+        // Add table to container
         stockTableContainer.appendChild(table);
-    }
-    
-    /**
-     * Handle page change event
-     * @param {Number} page - New page number
-     */
-    function handlePageChange(page) {
-        console.log('Page changed to', page);
-        
-        // Update URL with new page
-        updateUrlParams({ page });
-        
-        // Load new page
-        loadStocksPage(page, pageSize);
-    }
-    
-    /**
-     * Handle search input
-     */
-    function handleSearch() {
-        console.log('Search input changed');
-        
-        const searchTerm = searchInput.value.trim();
-        
-        // Update active filters
-        if (searchTerm) {
-            activeFilters.search = searchTerm;
-        } else {
-            delete activeFilters.search;
-        }
-        
-        // Update URL
-        updateUrlParams({ search: searchTerm || null, page: 1 });
-        
-        // Reset to first page and load
-        loadStocksPage(1, pageSize);
-    }
-    
-    /**
-     * Toggle filter button
-     * @param {HTMLElement} button - Filter button element
-     */
-    function toggleFilter(button) {
-        console.log('Toggle filter', button.dataset.filter, button.dataset.value);
-        
-        const filter = button.dataset.filter;
-        const value = button.dataset.value;
-        
-        // Toggle active state
-        button.classList.toggle('active');
-        
-        // Update active filters
-        if (!activeFilters[filter]) {
-            activeFilters[filter] = [];
-        }
-        
-        if (button.classList.contains('active')) {
-            // Add filter value if not already present
-            if (!activeFilters[filter].includes(value)) {
-                activeFilters[filter].push(value);
-            }
-        } else {
-            // Remove filter value
-            activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
-            
-            // Remove empty filter arrays
-            if (activeFilters[filter].length === 0) {
-                delete activeFilters[filter];
-            }
-        }
-        
-        console.log('Updated active filters:', activeFilters);
-        
-        // Update URL and reset to first page
-        updateUrlParams({ ...activeFilters, page: 1 });
-        
-        // Load first page with new filters
-        loadStocksPage(1, pageSize);
-    }
-    
-    /**
-     * Toggle preset button
-     * @param {HTMLElement} button - Preset button element
-     */
-    function togglePreset(button) {
-        console.log('Toggle preset', button.dataset.preset);
-        
-        const preset = button.dataset.preset;
-        
-        // Toggle active state for this button
-        button.classList.toggle('active');
-        
-        // Deactivate other preset buttons
-        document.querySelectorAll('.preset-button').forEach(btn => {
-            if (btn !== button) {
-                btn.classList.remove('active');
-            }
-        });
-        
-        // Clear existing filters
-        document.querySelectorAll('.filter-button').forEach(btn => {
-            btn.classList.remove('active');
-        });
-        
-        // Reset active filters
-        activeFilters = {};
-        
-        // Apply preset filters if button is active
-        if (button.classList.contains('active')) {
-            applyPresetFilters(preset);
-        }
-        
-        // Update filter buttons to match active filters
-        updateFilterButtonsFromActiveFilters();
-        
-        // Update URL and reset to first page
-        updateUrlParams({ preset: button.classList.contains('active') ? preset : null, page: 1 });
-        
-        // Load first page with new filters
-        loadStocksPage(1, pageSize);
-    }
-    
-    /**
-     * Apply preset filters
-     * @param {String} preset - Preset name
-     */
-    function applyPresetFilters(preset) {
-        console.log('Applying preset filters for', preset);
-        
-        switch (preset) {
-            case 'value':
-                activeFilters.valuation = ['undervalued'];
-                activeFilters.rotce = ['good', 'excellent']; // Add ROTCE filter for value preset
-                break;
-            case 'growth':
-                activeFilters.growth = ['high'];
-                break;
-            case 'dividend':
-                activeFilters.dividend = ['high'];
-                break;
-            case 'quality':
-                activeFilters.debt = ['low'];
-                activeFilters.rotce = ['excellent']; // Add ROTCE filter for quality preset
-                break;
-        }
-        
-        console.log('Applied preset filters:', activeFilters);
-    }
-    
-    /**
-     * Update filter buttons to match active filters
-     */
-    function updateFilterButtonsFromActiveFilters() {
-        console.log('Updating filter buttons from active filters');
-        
-        // Reset all filter buttons
-        document.querySelectorAll('.filter-button').forEach(button => {
-            const filter = button.dataset.filter;
-            const value = button.dataset.value;
-            
-            // Check if this filter value is active
-            const isActive = activeFilters[filter] && activeFilters[filter].includes(value);
-            
-            // Update button state
-            button.classList.toggle('active', isActive);
-        });
-    }
-    
-    /**
-     * Convert active filters to backend parameters
-     * @param {Object} filters - Active filters object
-     * @returns {URLSearchParams} URL search params
-     */
-    function convertFiltersToBackendParams(filters) {
-        console.log('Converting filters to backend params:', filters);
-        
-        const params = new URLSearchParams();
-        
-        // Handle search term
-        if (filters.search) {
-            params.append('search', filters.search);
-        }
-        
-        // Handle market cap filters
-        if (filters.market_cap) {
-            filters.market_cap.forEach(value => {
-                switch (value) {
-                    case 'large':
-                        params.append('minMarketCap', '10000000000'); // $10B+
-                        break;
-                    case 'mid':
-                        params.append('minMarketCap', '2000000000'); // $2B+
-                        params.append('maxMarketCap', '10000000000'); // $10B
-                        break;
-                    case 'small':
-                        params.append('minMarketCap', '300000000'); // $300M+
-                        params.append('maxMarketCap', '2000000000'); // $2B
-                        break;
-                    case 'micro':
-                        params.append('maxMarketCap', '300000000'); // $300M
-                        break;
-                }
-            });
-        }
-        
-        // Handle volume filters
-        if (filters.volume) {
-            filters.volume.forEach(value => {
-                switch (value) {
-                    case 'high':
-                        params.append('minVolume', '10000000'); // $10M+
-                        break;
-                    case 'medium':
-                        params.append('minVolume', '1000000'); // $1M+
-                        params.append('maxVolume', '10000000'); // $10M
-                        break;
-                    case 'low':
-                        params.append('maxVolume', '1000000'); // $1M
-                        break;
-                }
-            });
-        }
-        
-        // Handle debt filters
-        if (filters.debt) {
-            filters.debt.forEach(value => {
-                switch (value) {
-                    case 'low':
-                        params.append('maxDebtToEBITDA', '1.5');
-                        break;
-                    case 'moderate':
-                        params.append('minDebtToEBITDA', '1.5');
-                        params.append('maxDebtToEBITDA', '3');
-                        break;
-                    case 'high':
-                        params.append('minDebtToEBITDA', '3');
-                        break;
-                }
-            });
-        }
-        
-        // Handle valuation filters
-        if (filters.valuation) {
-            filters.valuation.forEach(value => {
-                switch (value) {
-                    case 'undervalued':
-                        params.append('maxPE', '15');
-                        break;
-                    case 'fair':
-                        params.append('minPE', '15');
-                        params.append('maxPE', '25');
-                        break;
-                    case 'overvalued':
-                        params.append('minPE', '25');
-                        break;
-                }
-            });
-        }
-        
-        // Handle ROTCE filters
-        if (filters.rotce) {
-            filters.rotce.forEach(value => {
-                switch (value) {
-                    case 'excellent':
-                        params.append('minROTCE', '0.20'); // 20%+
-                        break;
-                    case 'good':
-                        params.append('minROTCE', '0.15'); // 15%+
-                        params.append('maxROTCE', '0.20'); // 20%
-                        break;
-                    case 'average':
-                        params.append('minROTCE', '0.10'); // 10%+
-                        params.append('maxROTCE', '0.15'); // 15%
-                        break;
-                    case 'below_average':
-                        params.append('minROTCE', '0.05'); // 5%+
-                        params.append('maxROTCE', '0.10'); // 10%
-                        break;
-                    case 'poor':
-                        params.append('maxROTCE', '0.05'); // 5%
-                        break;
-                }
-            });
-        }
-        
-        console.log('Converted params:', params.toString());
-        return params;
-    }
-    
-    /**
-     * Update URL parameters
-     * @param {Object} params - Parameters to update
-     */
-    function updateUrlParams(params) {
-        console.log('Updating URL params:', params);
-        
-        const url = new URL(window.location.href);
-        const searchParams = url.searchParams;
-        
-        // Clear existing params
-        Array.from(searchParams.keys()).forEach(key => {
-            searchParams.delete(key);
-        });
-        
-        // Add new params
-        Object.entries(params).forEach(([key, value]) => {
-            if (value === null || value === undefined) {
-                return;
-            }
-            
-            if (Array.isArray(value)) {
-                value.forEach(v => searchParams.append(key, v));
-            } else {
-                searchParams.set(key, value);
-            }
-        });
-        
-        // Update URL without reloading page
-        window.history.replaceState({}, '', url);
-    }
-    
-    /**
-     * Switch between card and table views
-     * @param {String} view - View type ('card' or 'table')
-     */
-    function switchView(view) {
-        console.log('Switching to', view, 'view');
-        
-        if (view === currentView) {
-            return;
-        }
-        
-        currentView = view;
-        
-        // Update URL
-        updateUrlParams({ view });
-        
-        // Re-render stocks in new view
-        directRenderStocks(currentStocks);
-    }
-    
-    /**
-     * Toggle filters panel
-     */
-    function toggleFilters() {
-        console.log('Toggling filters panel');
-        
-        filtersContent.classList.toggle('collapsed');
-        filtersToggle.classList.toggle('collapsed');
     }
     
     /**
@@ -852,23 +500,24 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Object} stats - Stats data
      */
     function updateStats(stats) {
-        console.log('Updating stats:', stats);
+        console.log('Updating stats with', stats);
         
-        if (stats.totalStocks) {
-            totalStocksElement.textContent = formatNumber(stats.totalStocks);
+        if (!stats) {
+            console.error('Invalid stats data');
+            return;
         }
         
-        if (stats.nyseStocks) {
-            nyseStocksElement.textContent = formatNumber(stats.nyseStocks);
-        }
+        // Update stats display
+        totalStocksElement.textContent = stats.totalStocks || 0;
+        nyseStocksElement.textContent = stats.nyseStocks || 0;
+        nasdaqStocksElement.textContent = stats.nasdaqStocks || 0;
         
-        if (stats.nasdaqStocks) {
-            nasdaqStocksElement.textContent = formatNumber(stats.nasdaqStocks);
-        }
-        
+        // Update last updated time
         if (stats.lastUpdated) {
             const date = new Date(stats.lastUpdated);
-            lastUpdatedElement.textContent = date.toLocaleTimeString();
+            lastUpdatedElement.textContent = date.toLocaleString();
+        } else {
+            lastUpdatedElement.textContent = 'Never';
         }
     }
     
@@ -877,8 +526,6 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Boolean} connected - Whether API is connected
      */
     function updateApiStatus(connected) {
-        console.log('Updating API status:', connected ? 'connected' : 'disconnected');
-        
         apiStatusIndicator.classList.toggle('connected', connected);
         apiStatusIndicator.classList.toggle('disconnected', !connected);
         apiStatusText.textContent = connected ? 'connected' : 'disconnected';
@@ -889,44 +536,330 @@ document.addEventListener('DOMContentLoaded', function() {
      * @param {Boolean} loading - Whether app is loading
      */
     function setLoading(loading) {
-        console.log('Setting loading state:', loading);
-        
         isLoading = loading;
         document.body.classList.toggle('loading', loading);
+    }
+    
+    /**
+     * Handle page change
+     * @param {Number} page - New page number
+     */
+    function handlePageChange(page) {
+        console.log('Page changed to', page);
+        
+        // Update URL with new page
+        const url = new URL(window.location);
+        url.searchParams.set('page', page);
+        window.history.replaceState({}, '', url);
+        
+        // Load new page
+        loadStocksPage(page, pageSize);
+    }
+    
+    /**
+     * Handle search input
+     */
+    function handleSearch() {
+        const searchTerm = searchInput.value.trim();
+        console.log('Search term:', searchTerm);
+        
+        // Update active filters
+        if (searchTerm) {
+            activeFilters.search = searchTerm;
+        } else {
+            delete activeFilters.search;
+        }
+        
+        // Reset to first page and load
+        currentPage = 1;
+        loadStocksPage(currentPage, pageSize);
+    }
+    
+    /**
+     * Toggle filters panel
+     */
+    function toggleFilters() {
+        filtersContent.classList.toggle('collapsed');
+        filtersToggle.querySelector('.filters-toggle').classList.toggle('collapsed');
+    }
+    
+    /**
+     * Switch view between card and table
+     * @param {String} view - View type ('card' or 'table')
+     */
+    function switchView(view) {
+        if (currentView === view) return;
+        
+        currentView = view;
+        
+        // Update URL with new view
+        const url = new URL(window.location);
+        url.searchParams.set('view', view);
+        window.history.replaceState({}, '', url);
+        
+        // Render stocks in new view
+        directRenderStocks(currentStocks);
+    }
+    
+    /**
+     * Toggle filter button
+     * @param {HTMLElement} button - Filter button element
+     */
+    function toggleFilter(button) {
+        const filter = button.dataset.filter;
+        const value = button.dataset.value;
+        
+        console.log('Toggle filter:', filter, value);
+        
+        // Toggle active state
+        button.classList.toggle('active');
+        
+        // Update active filters
+        if (!activeFilters[filter]) {
+            activeFilters[filter] = [];
+        }
+        
+        if (button.classList.contains('active')) {
+            // Add filter
+            if (!activeFilters[filter].includes(value)) {
+                activeFilters[filter].push(value);
+            }
+        } else {
+            // Remove filter
+            activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
+            if (activeFilters[filter].length === 0) {
+                delete activeFilters[filter];
+            }
+        }
+        
+        console.log('Active filters:', activeFilters);
+        
+        // Reset to first page and load
+        currentPage = 1;
+        loadStocksPage(currentPage, pageSize);
+    }
+    
+    /**
+     * Toggle preset button
+     * @param {HTMLElement} button - Preset button element
+     */
+    function togglePreset(button) {
+        const preset = button.dataset.preset;
+        
+        console.log('Toggle preset:', preset);
+        
+        // Clear all active filters
+        activeFilters = {};
+        
+        // Remove active class from all filter buttons
+        document.querySelectorAll('.filter-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Remove active class from all preset buttons
+        document.querySelectorAll('.preset-button').forEach(btn => {
+            btn.classList.remove('active');
+        });
+        
+        // Toggle active state
+        button.classList.toggle('active');
+        
+        // Apply preset filters if active
+        if (button.classList.contains('active')) {
+            applyPreset(preset);
+        }
+        
+        console.log('Active filters after preset:', activeFilters);
+        
+        // Reset to first page and load
+        currentPage = 1;
+        loadStocksPage(currentPage, pageSize);
+    }
+    
+    /**
+     * Apply preset filters
+     * @param {String} preset - Preset name
+     */
+    function applyPreset(preset) {
+        switch (preset) {
+            case 'value':
+                // Value stocks preset
+                activeFilters.valuation = ['undervalued'];
+                activeFilters.debt = ['low', 'medium'];
+                activeFilters.rotce = ['good', 'excellent']; // Added ROTCE filter
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="valuation"][data-value="undervalued"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="low"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="medium"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="rotce"][data-value="good"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="rotce"][data-value="excellent"]').classList.add('active');
+                break;
+                
+            case 'growth':
+                // Growth stocks preset
+                activeFilters.valuation = ['fair', 'overvalued'];
+                activeFilters.market_cap = ['mid', 'large'];
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="valuation"][data-value="fair"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="valuation"][data-value="overvalued"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="mid"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="large"]').classList.add('active');
+                break;
+                
+            case 'dividend':
+                // Dividend stocks preset
+                activeFilters.market_cap = ['large'];
+                activeFilters.debt = ['low', 'medium'];
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="large"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="low"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="medium"]').classList.add('active');
+                break;
+                
+            case 'quality':
+                // Quality stocks preset
+                activeFilters.market_cap = ['large', 'mid'];
+                activeFilters.debt = ['low'];
+                activeFilters.rotce = ['excellent']; // Added ROTCE filter
+                
+                // Activate corresponding buttons
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="large"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="market_cap"][data-value="mid"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="debt"][data-value="low"]').classList.add('active');
+                document.querySelector('.filter-button[data-filter="rotce"][data-value="excellent"]').classList.add('active');
+                break;
+        }
+    }
+    
+    /**
+     * FIXED: Convert filters to backend parameters
+     * @param {Object} filters - Active filters
+     * @returns {URLSearchParams} Backend parameters
+     */
+    function convertFiltersToBackendParams(filters) {
+        console.log('Converting filters to backend params:', filters);
+        
+        const params = new URLSearchParams();
+        
+        // Add search parameter
+        if (filters.search) {
+            params.append('search', filters.search);
+        }
+        
+        // Add market cap filters
+        if (filters.market_cap && filters.market_cap.length > 0) {
+            if (filters.market_cap.includes('large')) {
+                params.append('minMarketCap', '10000000000'); // $10B+
+            } else if (filters.market_cap.includes('mid')) {
+                params.append('minMarketCap', '2000000000'); // $2B+
+            } else if (filters.market_cap.includes('small')) {
+                params.append('minMarketCap', '300000000'); // $300M+
+            }
+            
+            if (filters.market_cap.includes('micro')) {
+                params.append('maxMarketCap', '300000000'); // <$300M
+            } else if (filters.market_cap.includes('small')) {
+                params.append('maxMarketCap', '2000000000'); // <$2B
+            } else if (filters.market_cap.includes('mid')) {
+                params.append('maxMarketCap', '10000000000'); // <$10B
+            }
+        }
+        
+        // Add volume filters
+        if (filters.volume && filters.volume.length > 0) {
+            if (filters.volume.includes('high')) {
+                params.append('minVolume', '5000000'); // >$5M
+            } else if (filters.volume.includes('medium')) {
+                params.append('minVolume', '1000000'); // >$1M
+            }
+            
+            if (filters.volume.includes('low')) {
+                params.append('maxVolume', '1000000'); // <$1M
+            } else if (filters.volume.includes('medium')) {
+                params.append('maxVolume', '5000000'); // <$5M
+            }
+        }
+        
+        // FIXED: Add debt filters with correct parameter names
+        if (filters.debt && filters.debt.length > 0) {
+            if (filters.debt.includes('low')) {
+                params.append('maxDebtToEBITDA', '0.5'); // <0.5x
+            } else if (filters.debt.includes('medium')) {
+                params.append('minDebtToEBITDA', '0.5'); // >0.5x
+                params.append('maxDebtToEBITDA', '1.5'); // <1.5x
+            } else if (filters.debt.includes('high')) {
+                params.append('minDebtToEBITDA', '1.5'); // >1.5x
+            }
+        }
+        
+        // Add valuation filters
+        if (filters.valuation && filters.valuation.length > 0) {
+            if (filters.valuation.includes('undervalued')) {
+                params.append('maxPE', '15'); // <15
+            } else if (filters.valuation.includes('fair')) {
+                params.append('minPE', '15'); // >15
+                params.append('maxPE', '25'); // <25
+            } else if (filters.valuation.includes('overvalued')) {
+                params.append('minPE', '25'); // >25
+            }
+        }
+        
+        // Add ROTCE filters
+        if (filters.rotce && filters.rotce.length > 0) {
+            if (filters.rotce.includes('excellent')) {
+                params.append('minROTCE', '0.2'); // >20%
+            } else if (filters.rotce.includes('good')) {
+                params.append('minROTCE', '0.15'); // >15%
+                params.append('maxROTCE', '0.2'); // <20%
+            } else if (filters.rotce.includes('average')) {
+                params.append('minROTCE', '0.1'); // >10%
+                params.append('maxROTCE', '0.15'); // <15%
+            } else if (filters.rotce.includes('below_average')) {
+                params.append('minROTCE', '0.05'); // >5%
+                params.append('maxROTCE', '0.1'); // <10%
+            } else if (filters.rotce.includes('poor')) {
+                params.append('maxROTCE', '0.05'); // <5%
+            }
+        }
+        
+        console.log('Converted params:', params.toString());
+        return params;
     }
     
     /**
      * Handle window resize
      */
     function handleResize() {
-        console.log('Window resized');
-        
         // Re-render stocks to adjust layout
         directRenderStocks(currentStocks);
     }
     
     /**
      * Format currency value
-     * @param {Number} value - Value to format
+     * @param {Number} value - Currency value
      * @returns {String} Formatted currency string
      */
     function formatCurrency(value) {
-        if (value === null || value === undefined) {
-            return 'N/A';
-        }
+        if (value === undefined || value === null) return null;
         
-        return '$' + value.toFixed(2).replace(/\d(?=(\d{3})+\.)/g, '$&,');
+        return new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+        }).format(value);
     }
     
     /**
-     * Format large number with appropriate suffix
-     * @param {Number} value - Value to format
+     * Format large number with abbreviation
+     * @param {Number} value - Large number
      * @returns {String} Formatted number string
      */
     function formatLargeNumber(value) {
-        if (value === null || value === undefined) {
-            return 'N/A';
-        }
+        if (value === undefined || value === null) return null;
         
         if (value >= 1e12) {
             return '$' + (value / 1e12).toFixed(2) + 'T';
@@ -942,35 +875,20 @@ document.addEventListener('DOMContentLoaded', function() {
     }
     
     /**
-     * Format number with commas
-     * @param {Number} value - Value to format
-     * @returns {String} Formatted number string
-     */
-    function formatNumber(value) {
-        if (value === null || value === undefined) {
-            return '0';
-        }
-        
-        return value.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
-    }
-    
-    /**
-     * Debounce function to limit how often a function can be called
+     * Debounce function
      * @param {Function} func - Function to debounce
      * @param {Number} wait - Wait time in milliseconds
      * @returns {Function} Debounced function
      */
     function debounce(func, wait) {
         let timeout;
-        
-        return function executedFunction(...args) {
-            const later = () => {
-                clearTimeout(timeout);
-                func(...args);
-            };
-            
+        return function() {
+            const context = this;
+            const args = arguments;
             clearTimeout(timeout);
-            timeout = setTimeout(later, wait);
+            timeout = setTimeout(() => {
+                func.apply(context, args);
+            }, wait);
         };
     }
 });
