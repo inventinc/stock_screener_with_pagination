@@ -1,3 +1,12 @@
+/**
+ * Fixed Server.js with ROTCE Filter Support
+ * 
+ * This version fixes the issues with:
+ * 1. Missing stats endpoint
+ * 2. Filter functionality
+ * 3. ROTCE filter support
+ */
+
 const express = require('express');
 const cors = require('cors');
 const path = require('path');
@@ -24,35 +33,37 @@ connectDB()
   .catch(err => console.error('MongoDB connection error:', err));
 
 // API Routes
-// Import stock routes
-const stockRoutes = require('./routes/stockRoutes');
-app.use('/api', stockRoutes);
-
-// Get stats
+// Get stats - FIXED to ensure proper counting
 app.get('/api/stats', async (req, res) => {
   try {
+    console.log('Stats endpoint called');
     const total = await Stock.countDocuments();
-    const nyse = await Stock.countDocuments({ exchange: 'XNYS' });
-    const nasdaq = await Stock.countDocuments({ exchange: 'XNAS' });
+    const nyse = await Stock.countDocuments({ exchange: 'NYSE' });
+    const nasdaq = await Stock.countDocuments({ exchange: 'NASDAQ' });
     
     // Get the most recently updated stock
     const latestStock = await Stock.findOne().sort({ lastUpdated: -1 });
     
-    res.json({
-      total,
-      nyse,
-      nasdaq,
+    const stats = {
+      totalStocks: total,
+      nyseStocks: nyse,
+      nasdaqStocks: nasdaq,
       lastUpdated: latestStock ? latestStock.lastUpdated : null
-    });
+    };
+    
+    console.log('Returning stats:', stats);
+    res.json(stats);
   } catch (error) {
     console.error('Error fetching stats:', error);
     res.status(500).json({ error: 'Failed to fetch stats' });
   }
 });
 
-// Get stocks with filtering and pagination (UPDATED WITH ROTCE FILTER SUPPORT)
+// Get stocks with filtering and pagination (FIXED WITH ROTCE FILTER SUPPORT)
 app.get('/api/stocks', async (req, res) => {
   try {
+    console.log('Stocks endpoint called with query:', req.query);
+    
     // Extract existing filter parameters
     const page = parseInt(req.query.page) || 1;
     const pageSize = parseInt(req.query.pageSize) || 50;
@@ -124,6 +135,8 @@ app.get('/api/stocks', async (req, res) => {
       filter.rotce.$lte = parseFloat(req.query.maxROTCE);
     }
     
+    console.log('Applying filter:', JSON.stringify(filter));
+    
     // Calculate skip and limit for pagination
     const skip = (page - 1) * pageSize;
     const limit = pageSize;
@@ -137,6 +150,8 @@ app.get('/api/stocks', async (req, res) => {
     
     // Count total matching stocks for pagination
     const total = await Stock.countDocuments(filter);
+    
+    console.log(`Found ${stocks.length} stocks out of ${total} total matches`);
     
     // Return response
     res.json({
@@ -153,6 +168,14 @@ app.get('/api/stocks', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch stocks' });
   }
 });
+
+// Import stock routes (if they exist)
+try {
+  const stockRoutes = require('./routes/stockRoutes');
+  app.use('/api', stockRoutes);
+} catch (error) {
+  console.log('Stock routes not found, skipping import');
+}
 
 // Health check endpoint
 app.get('/api/health', (req, res) => {
