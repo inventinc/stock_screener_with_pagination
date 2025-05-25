@@ -1,534 +1,314 @@
 /**
- * Financial Modeling Prep API Import Module
- * Replaces Polygon.io with FMP for stock data import
- * Modified for Heroku compatibility
+ * Enhanced FMP Import Script with ROTCE and Cash Conversion Ratio Support
+ * 
+ * This script extends the original FMP import functionality to fetch additional
+ * data points needed for ROTCE and Cash Conversion Ratio calculations.
  */
-const fs = require('fs');
-const path = require('path');
+
 const axios = require('axios');
 const mongoose = require('mongoose');
-const errorLogger = require('./errorLogger');
-
-// Load Stock model
+const { connectDB } = require('./db/mongoose');
 const Stock = require('./db/models/Stock');
+const financialMetricsCalculator = require('./financial_metrics_calculator');
+require('dotenv').config();
 
-// API configuration
-const API_KEY = 'nVR1WhOPm2A0hL8yjk8sVahVjiw9TB5l'; // FMP API key
-const BASE_URL = 'https://financialmodelingprep.com/api/v3';
-
-// Import status constants
-const IMPORT_STATUS = {
-  IDLE: 'idle',
-  RUNNING: 'running',
-  COMPLETED: 'completed',
-  ERROR: 'error',
-  RATE_LIMITED: 'rate_limited'
-};
-
-// Adaptive rate limiting configuration
-const RATE_CONFIG = {
-  initialConcurrency: 5,        // Start with conservative concurrency
-  minConcurrency: 1,            // Minimum concurrency
-  maxConcurrency: 15,           // Maximum concurrency
-  concurrencyStep: 1,           // How much to adjust concurrency
-  initialBackoff: 300,          // Initial backoff in ms
-  maxBackoff: 5000,             // Maximum backoff in ms
-  backoffFactor: 1.5,           // Exponential backoff factor
-  successThreshold: 20,         // Number of consecutive successes to increase concurrency
-  rateLimitThreshold: 5,        // Number of rate limits to decrease concurrency
-  adaptiveWindow: 60000,        // Time window for rate limit adaptation (1 minute)
-  requestSpacing: 100           // Minimum ms between requests
-};
-
-// Global state for adaptive rate limiting
-let currentConcurrency = RATE_CONFIG.initialConcurrency;
-let currentBackoff = RATE_CONFIG.initialBackoff;
-let consecutiveSuccesses = 0;
-let consecutiveRateLimits = 0;
-let lastRateLimitTime = 0;
-let requestsInWindow = 0;
-let windowStartTime = Date.now();
-let lastRequestTime = 0;
-
-// Global counters for monitoring
-let totalRequests = 0;
-let successfulRequests = 0;
-let failedRequests = 0;
-let rateLimitedRequests = 0;
-
-// Use /tmp directory for Heroku compatibility
-const dataDir = '/tmp';
+// Configuration
+const FMP_API_KEY = process.env.FMP_API_KEY;
+const FMP_BASE_URL = 'https://financialmodelingprep.com/api/v3';
+const BATCH_SIZE = 25; // Process stocks in batches
+const CONCURRENT_REQUESTS = 5; // Number of concurrent API requests
+const DELAY_BETWEEN_BATCHES = 1000; // Delay between batches in ms
 
 /**
- * Update import status - safe for Heroku
- * @param {Object} status - Status object to save
- */
-function updateImportStatus(status) {
-  try {
-    // On Heroku, just log the status instead of writing to file
-    console.log('Import Status Update:', JSON.stringify(status));
-    
-    // Try to write to tmp directory (which is writable on Heroku)
-    try {
-      const importStatusPath = path.join(dataDir, 'import_status.json');
-      fs.writeFileSync(importStatusPath, JSON.stringify(status, null, 2));
-    } catch (writeError) {
-      // Silently fail if writing fails - this is just status tracking
-      console.log('Note: Could not write status file (expected on Heroku)');
-    }
-  } catch (error) {
-    console.error('Error updating import status:', error);
-  }
-}
-
-/**
- * Get current import status - safe for Heroku
- * @returns {Object} Current import status
- */
-function getImportStatus() {
-  try {
-    const importStatusPath = path.join(dataDir, 'import_status.json');
-    if (fs.existsSync(importStatusPath)) {
-      return JSON.parse(fs.readFileSync(importStatusPath, 'utf8'));
-    }
-  } catch (error) {
-    // Silently fail if reading fails - this is just status tracking
-    console.log('Note: Could not read status file (expected on Heroku)');
-  }
-  
-  return {
-    status: IMPORT_STATUS.IDLE,
-    lastRun: null,
-    progress: {
-      total: 0,
-      completed: 0,
-      failed: 0
-    }
-  };
-}
-
-/**
- * Make API request with adaptive rate limiting
- * @param {String} endpoint - API endpoint
+ * Fetch data from FMP API
+ * @param {string} endpoint - API endpoint
  * @param {Object} params - Query parameters
- * @returns {Promise} Promise resolving to API response
+ * @returns {Promise<Object>} - API response data
  */
-async function makeApiRequest(endpoint, params = {}) {
-  // Add API key to params
-  params.apikey = API_KEY;
-  
-  // Enforce minimum spacing between requests
-  const now = Date.now();
-  const timeSinceLastRequest = now - lastRequestTime;
-  if (timeSinceLastRequest < RATE_CONFIG.requestSpacing) {
-    await new Promise(resolve => setTimeout(resolve, RATE_CONFIG.requestSpacing - timeSinceLastRequest));
-  }
-  
-  // Update request timing
-  lastRequestTime = Date.now();
-  totalRequests++;
-  
-  // Update window counters
-  if (now - windowStartTime > RATE_CONFIG.adaptiveWindow) {
-    // Reset window
-    windowStartTime = now;
-    requestsInWindow = 0;
-  }
-  requestsInWindow++;
-  
+async function fetchFMPData(endpoint, params = {}) {
   try {
-    const url = `${BASE_URL}${endpoint}`;
-    const response = await axios.get(url, { params });
-    
-    // Handle successful request
-    successfulRequests++;
-    consecutiveSuccesses++;
-    consecutiveRateLimits = 0;
-    
-    // Potentially increase concurrency if we've had enough consecutive successes
-    if (consecutiveSuccesses >= RATE_CONFIG.successThreshold && 
-        currentConcurrency < RATE_CONFIG.maxConcurrency) {
-      currentConcurrency = Math.min(
-        currentConcurrency + RATE_CONFIG.concurrencyStep,
-        RATE_CONFIG.maxConcurrency
-      );
-      consecutiveSuccesses = 0;
-      console.log(`[ADAPTIVE] Increased concurrency to ${currentConcurrency}`);
-    }
+    const url = `${FMP_BASE_URL}${endpoint}`;
+    const response = await axios.get(url, {
+      params: {
+        ...params,
+        apikey: FMP_API_KEY
+      }
+    });
     
     return response.data;
   } catch (error) {
-    // Handle rate limiting
-    if (error.response && (error.response.status === 429 || error.response.status === 403)) {
-      rateLimitedRequests++;
-      consecutiveRateLimits++;
-      consecutiveSuccesses = 0;
-      lastRateLimitTime = Date.now();
-      
-      // Decrease concurrency if we're getting rate limited
-      if (consecutiveRateLimits >= RATE_CONFIG.rateLimitThreshold && 
-          currentConcurrency > RATE_CONFIG.minConcurrency) {
-        currentConcurrency = Math.max(
-          currentConcurrency - RATE_CONFIG.concurrencyStep,
-          RATE_CONFIG.minConcurrency
-        );
-        consecutiveRateLimits = 0;
-        console.log(`[ADAPTIVE] Decreased concurrency to ${currentConcurrency}`);
-      }
-      
-      // Increase backoff time
-      currentBackoff = Math.min(
-        currentBackoff * RATE_CONFIG.backoffFactor,
-        RATE_CONFIG.maxBackoff
-      );
-      
-      console.log(`[API] Rate limited. Backing off for ${currentBackoff}ms`);
-      await new Promise(resolve => setTimeout(resolve, currentBackoff));
-      
-      // Retry the request
-      return makeApiRequest(endpoint, params);
+    console.error(`Error fetching data from ${endpoint}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Fetch comprehensive financial data for a stock
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Object>} - Comprehensive financial data
+ */
+async function fetchComprehensiveFinancialData(symbol) {
+  try {
+    // Fetch data in parallel for efficiency
+    const [
+      profile,
+      incomeStatements,
+      balanceSheets,
+      cashFlowStatements,
+      keyMetrics,
+      ratios
+    ] = await Promise.all([
+      fetchFMPData(`/profile/${symbol}`),
+      fetchFMPData(`/income-statement/${symbol}`, { limit: 5 }), // 5 years for Cash Conversion
+      fetchFMPData(`/balance-sheet-statement/${symbol}`, { limit: 5 }),
+      fetchFMPData(`/cash-flow-statement/${symbol}`, { limit: 5 }),
+      fetchFMPData(`/key-metrics/${symbol}`, { limit: 1 }),
+      fetchFMPData(`/ratios/${symbol}`, { limit: 1 })
+    ]);
+    
+    // Combine all data into a comprehensive financial object
+    return {
+      profile: profile && profile.length > 0 ? profile[0] : null,
+      incomeStatement: incomeStatements || [],
+      balanceSheet: balanceSheets || [],
+      cashFlowStatement: cashFlowStatements || [],
+      keyMetrics: keyMetrics && keyMetrics.length > 0 ? keyMetrics[0] : null,
+      ratios: ratios && ratios.length > 0 ? ratios[0] : null
+    };
+  } catch (error) {
+    console.error(`Error fetching comprehensive data for ${symbol}:`, error.message);
+    return null;
+  }
+}
+
+/**
+ * Process a single stock
+ * @param {Object} stockInfo - Basic stock info
+ * @returns {Promise<Object>} - Processed stock data
+ */
+async function processStock(stockInfo) {
+  try {
+    const { symbol } = stockInfo;
+    console.log(`Processing ${symbol}...`);
+    
+    // Fetch comprehensive financial data
+    const financialData = await fetchComprehensiveFinancialData(symbol);
+    if (!financialData || !financialData.profile) {
+      console.log(`Skipping ${symbol}: No financial data available`);
+      return null;
     }
     
-    // Handle other errors
-    failedRequests++;
-    console.error(`[ERROR] makeApiRequest: ${error.message}`);
-    throw error;
-  }
-}
-
-/**
- * Get all stock symbols from FMP API
- * @returns {Promise<Array>} Promise resolving to array of stock symbols
- */
-async function getAllStockSymbols() {
-  try {
-    console.log('Starting getAllStockSymbols function with adaptive rate limiting');
+    // Extract basic profile data
+    const { profile } = financialData;
     
-    // Get all stock symbols from FMP API
-    console.log('Making API request to get all stock symbols...');
-    const stockList = await makeApiRequest('/stock/list');
+    // Calculate financial metrics (ROTCE and Cash Conversion)
+    const financialMetrics = financialMetricsCalculator.calculateFinancialMetrics(financialData);
     
-    if (!stockList || !Array.isArray(stockList)) {
-      throw new Error('Invalid response from FMP API');
-    }
+    // Extract key financial ratios
+    const ratios = financialData.ratios || {};
+    const keyMetrics = financialData.keyMetrics || {};
     
-    // Filter to only include common stocks (exclude ETFs, etc.)
-    const commonStocks = stockList.filter(stock => 
-      stock.type === 'stock' && 
-      (stock.exchangeShortName === 'NYSE' || stock.exchangeShortName === 'NASDAQ')
-    );
-    
-    console.log(`Found ${commonStocks.length} common stocks on NYSE and NASDAQ`);
-    
-    return commonStocks.map(stock => ({
-      symbol: stock.symbol,
-      name: stock.name,
-      exchange: stock.exchangeShortName
-    }));
-  } catch (error) {
-    console.error(`[API] getAllStockSymbols: ${error.message}`);
-    throw error;
-  }
-}
-
-/**
- * Get company profile from FMP API
- * @param {String} symbol - Stock symbol
- * @returns {Promise<Object>} Promise resolving to company profile
- */
-async function getCompanyProfile(symbol) {
-  try {
-    const profiles = await makeApiRequest(`/profile/${symbol}`);
-    return profiles && profiles.length > 0 ? profiles[0] : null;
-  } catch (error) {
-    console.error(`[API] getCompanyProfile for ${symbol}: ${error.message}`);
-    return null;
-  }
-}
-
-/**
- * Get company quote from FMP API
- * @param {String} symbol - Stock symbol
- * @returns {Promise<Object>} Promise resolving to company quote
- */
-async function getCompanyQuote(symbol) {
-  try {
-    const quotes = await makeApiRequest(`/quote/${symbol}`);
-    return quotes && quotes.length > 0 ? quotes[0] : null;
-  } catch (error) {
-    console.error(`[API] getCompanyQuote for ${symbol}: ${error.message}`);
-    return null;
-  }
-}
-
-/**
- * Get company financial ratios from FMP API
- * @param {String} symbol - Stock symbol
- * @returns {Promise<Object>} Promise resolving to financial ratios
- */
-async function getFinancialRatios(symbol) {
-  try {
-    const ratios = await makeApiRequest(`/ratios/${symbol}`);
-    return ratios && ratios.length > 0 ? ratios[0] : null;
-  } catch (error) {
-    console.error(`[API] getFinancialRatios for ${symbol}: ${error.message}`);
-    return null;
-  }
-}
-
-/**
- * Get company key metrics from FMP API
- * @param {String} symbol - Stock symbol
- * @returns {Promise<Object>} Promise resolving to key metrics
- */
-async function getKeyMetrics(symbol) {
-  try {
-    const metrics = await makeApiRequest(`/key-metrics/${symbol}`);
-    return metrics && metrics.length > 0 ? metrics[0] : null;
-  } catch (error) {
-    console.error(`[API] getKeyMetrics for ${symbol}: ${error.message}`);
-    return null;
-  }
-}
-
-/**
- * Calculate stock score based on various metrics
- * @param {Object} stockData - Combined stock data
- * @returns {Number} Score from 0-100
- */
-function calculateScore(stockData) {
-  let score = 0;
-  
-  // Market cap score (0-20)
-  const marketCap = stockData.marketCap || 0;
-  if (marketCap > 10000000000) score += 20; // $10B+
-  else if (marketCap > 2000000000) score += 15; // $2B+
-  else if (marketCap > 300000000) score += 10; // $300M+
-  else score += 5;
-  
-  // Debt score (0-20)
-  const debtToEBITDA = stockData.netDebtToEBITDA || 0;
-  if (debtToEBITDA < 1) score += 20;
-  else if (debtToEBITDA < 2) score += 15;
-  else if (debtToEBITDA < 3) score += 10;
-  else score += 5;
-  
-  // Valuation score (0-20)
-  const peRatio = stockData.peRatio || 0;
-  if (peRatio > 0 && peRatio < 15) score += 20;
-  else if (peRatio > 0 && peRatio < 25) score += 15;
-  else if (peRatio > 0 && peRatio < 35) score += 10;
-  else score += 5;
-  
-  // Profitability score (0-20)
-  const rotce = stockData.rotce || 0;
-  if (rotce > 0.2) score += 20;
-  else if (rotce > 0.15) score += 15;
-  else if (rotce > 0.1) score += 10;
-  else score += 5;
-  
-  // Add random factor (0-20) for demonstration
-  score += Math.floor(Math.random() * 20);
-  
-  // Cap at 100
-  return Math.min(score, 100);
-}
-
-/**
- * Process stock data from FMP API and map to our schema
- * @param {Object} stockInfo - Basic stock info
- * @param {Object} profile - Company profile
- * @param {Object} quote - Company quote
- * @param {Object} ratios - Financial ratios
- * @param {Object} metrics - Key metrics
- * @returns {Object} Processed stock data
- */
-function processStockData(stockInfo, profile, quote, ratios, metrics) {
-  // Create base stock object
-  const stock = {
-    symbol: stockInfo.symbol,
-    name: stockInfo.name || profile?.companyName || '',
-    exchange: stockInfo.exchange || profile?.exchangeShortName || '',
-    sector: profile?.sector || '',
-    industry: profile?.industry || '',
-    price: quote?.price || 0,
-    marketCap: quote?.marketCap || 0,
-    avgDollarVolume: quote?.avgVolume ? quote.avgVolume * (quote.price || 0) : 0,
-    lastUpdated: new Date()
-  };
-  
-  // Add financial metrics
-  if (ratios) {
-    stock.netDebtToEBITDA = ratios.debtToEBITDA || 0;
-    stock.peRatio = ratios.priceEarningsRatio || 0;
-    stock.dividendYield = ratios.dividendYield || 0;
-  }
-  
-  if (metrics) {
-    stock.evToEBIT = metrics.enterpriseValueOverEBIT || 0;
-    stock.rotce = metrics.returnOnTangibleAssets || 0;
-  }
-  
-  // Calculate score
-  stock.score = calculateScore(stock);
-  
-  return stock;
-}
-
-/**
- * Import stock data for a single symbol
- * @param {Object} stockInfo - Basic stock info
- * @returns {Promise<Object>} Promise resolving to imported stock data
- */
-async function importStock(stockInfo) {
-  try {
-    const symbol = stockInfo.symbol;
-    console.log(`Importing data for ${symbol}...`);
-    
-    // Get company profile
-    const profile = await getCompanyProfile(symbol);
-    
-    // Get company quote
-    const quote = await getCompanyQuote(symbol);
-    
-    // Get financial ratios
-    const ratios = await getFinancialRatios(symbol);
-    
-    // Get key metrics
-    const metrics = await getKeyMetrics(symbol);
-    
-    // Process and combine data
-    const stockData = processStockData(stockInfo, profile, quote, ratios, metrics);
-    
-    // Save to database
-    await Stock.findOneAndUpdate(
-      { symbol: stockData.symbol },
-      stockData,
-      { upsert: true, new: true }
-    );
+    // Prepare stock data for database
+    const stockData = {
+      symbol,
+      name: profile.companyName,
+      exchange: profile.exchangeShortName,
+      sector: profile.sector,
+      industry: profile.industry,
+      price: profile.price,
+      marketCap: profile.mktCap,
+      beta: profile.beta,
+      
+      // Financial ratios
+      peRatio: ratios.peRatio || profile.pe,
+      pbRatio: ratios.priceToBookRatio,
+      psRatio: ratios.priceToSalesRatio,
+      dividendYield: profile.lastDiv / profile.price,
+      
+      // Debt metrics
+      debtToEquity: ratios.debtToEquity,
+      netDebtToEBITDA: ratios.netDebtToEBITDA || ratios.debtToEBITDA,
+      
+      // Profitability metrics
+      returnOnEquity: ratios.returnOnEquity,
+      returnOnAssets: ratios.returnOnAssets,
+      
+      // Custom calculated metrics
+      rotce: financialMetrics.rotce.value,
+      rotceCalculationMethod: financialMetrics.rotce.method,
+      rotceHasAllComponents: financialMetrics.rotce.hasAllComponents,
+      
+      cashConversion: financialMetrics.cashConversion.value,
+      cashConversionYears: financialMetrics.cashConversion.components.yearsAvailable,
+      cashConversionHasAllComponents: financialMetrics.cashConversion.hasAllComponents,
+      
+      // Metadata
+      lastUpdated: new Date()
+    };
     
     return stockData;
   } catch (error) {
-    console.error(`Error importing ${stockInfo.symbol}:`, error);
-    errorLogger.logError(`Import error for ${stockInfo.symbol}`, error);
+    console.error(`Error processing ${stockInfo.symbol}:`, error.message);
     return null;
   }
 }
 
 /**
- * Import all stocks with adaptive rate limiting
- * @returns {Promise} Promise resolving when import is complete
+ * Process a batch of stocks
+ * @param {Array} stockBatch - Batch of stocks to process
+ * @returns {Promise<Array>} - Processed stock data
  */
-async function importAllStocksAdaptive() {
+async function processBatch(stockBatch) {
   try {
-    console.log('Starting adaptive import of all stocks');
-    
-    // Update import status
-    updateImportStatus({
-      status: IMPORT_STATUS.RUNNING,
-      startTime: new Date(),
-      progress: {
-        total: 0,
-        completed: 0,
-        failed: 0
+    // Process stocks concurrently with limited concurrency
+    const promises = [];
+    for (let i = 0; i < stockBatch.length; i += CONCURRENT_REQUESTS) {
+      const batchPromises = stockBatch.slice(i, i + CONCURRENT_REQUESTS).map(stock => processStock(stock));
+      const results = await Promise.all(batchPromises);
+      promises.push(...results);
+      
+      // Add small delay between sub-batches to avoid rate limiting
+      if (i + CONCURRENT_REQUESTS < stockBatch.length) {
+        await new Promise(resolve => setTimeout(resolve, 200));
       }
-    });
-    
-    // Get all stock symbols
-    console.log('Getting all tickers...');
-    const stocks = await getAllStockSymbols();
-    
-    // Update import status with total count
-    updateImportStatus({
-      status: IMPORT_STATUS.RUNNING,
-      startTime: new Date(),
-      progress: {
-        total: stocks.length,
-        completed: 0,
-        failed: 0
-      }
-    });
-    
-    // Process stocks in batches with adaptive concurrency
-    let completed = 0;
-    let failed = 0;
-    
-    // Process in batches
-    for (let i = 0; i < stocks.length; i += currentConcurrency) {
-      const batch = stocks.slice(i, i + currentConcurrency);
-      
-      // Process batch concurrently
-      const results = await Promise.allSettled(batch.map(stock => importStock(stock)));
-      
-      // Count successes and failures
-      results.forEach(result => {
-        if (result.status === 'fulfilled' && result.value) {
-          completed++;
-        } else {
-          failed++;
-        }
-      });
-      
-      // Update progress
-      const progress = {
-        total: stocks.length,
-        completed,
-        failed
-      };
-      
-      // Log progress
-      console.log(`Progress: ${completed + failed}/${stocks.length} (${completed} succeeded, ${failed} failed)`);
-      
-      // Update import status
-      updateImportStatus({
-        status: IMPORT_STATUS.RUNNING,
-        startTime: new Date(),
-        progress
-      });
-      
-      // Adaptive delay between batches
-      await new Promise(resolve => setTimeout(resolve, 100));
     }
     
-    // Update import status to completed
-    updateImportStatus({
-      status: IMPORT_STATUS.COMPLETED,
-      startTime: new Date(),
-      endTime: new Date(),
-      progress: {
-        total: stocks.length,
-        completed,
-        failed
-      }
-    });
+    // Filter out null results
+    return promises.filter(result => result !== null);
+  } catch (error) {
+    console.error('Error processing batch:', error.message);
+    return [];
+  }
+}
+
+/**
+ * Save processed stocks to database
+ * @param {Array} stocks - Processed stock data
+ * @returns {Promise<number>} - Number of stocks saved
+ */
+async function saveStocksToDatabase(stocks) {
+  try {
+    let savedCount = 0;
     
-    console.log('Import completed successfully');
-    console.log(`Imported ${completed} stocks, ${failed} failed`);
+    for (const stock of stocks) {
+      // Use findOneAndUpdate to upsert
+      await Stock.findOneAndUpdate(
+        { symbol: stock.symbol },
+        stock,
+        { upsert: true, new: true }
+      );
+      savedCount++;
+    }
+    
+    return savedCount;
+  } catch (error) {
+    console.error('Error saving stocks to database:', error.message);
+    return 0;
+  }
+}
+
+/**
+ * Main import function
+ * @param {number} limit - Optional limit on number of stocks to import
+ * @returns {Promise<Object>} - Import results
+ */
+async function importStocksWithEnhancedMetrics(limit = 0) {
+  try {
+    console.log('Starting enhanced FMP import with ROTCE and Cash Conversion support...');
+    
+    // Connect to database
+    await connectDB();
+    
+    // Fetch stock list from FMP
+    console.log('Fetching stock list...');
+    const stockList = await fetchFMPData('/stock/list');
+    
+    if (!stockList || !Array.isArray(stockList)) {
+      throw new Error('Failed to fetch stock list');
+    }
+    
+    // Filter to only include stocks from major exchanges
+    const filteredStocks = stockList.filter(stock => 
+      stock.type === 'stock' && 
+      (stock.exchangeShortName === 'NYSE' || 
+       stock.exchangeShortName === 'NASDAQ')
+    );
+    
+    // Apply limit if specified
+    const stocksToProcess = limit > 0 ? filteredStocks.slice(0, limit) : filteredStocks;
+    
+    console.log(`Processing ${stocksToProcess.length} stocks...`);
+    
+    // Process stocks in batches
+    let processedStocks = [];
+    let totalSaved = 0;
+    
+    for (let i = 0; i < stocksToProcess.length; i += BATCH_SIZE) {
+      const batch = stocksToProcess.slice(i, i + BATCH_SIZE);
+      console.log(`Processing batch ${Math.floor(i / BATCH_SIZE) + 1} of ${Math.ceil(stocksToProcess.length / BATCH_SIZE)}...`);
+      
+      const processedBatch = await processBatch(batch);
+      const savedCount = await saveStocksToDatabase(processedBatch);
+      
+      processedStocks.push(...processedBatch);
+      totalSaved += savedCount;
+      
+      console.log(`Batch complete. Saved ${savedCount} stocks.`);
+      
+      // Add delay between batches to avoid rate limiting
+      if (i + BATCH_SIZE < stocksToProcess.length) {
+        console.log(`Waiting ${DELAY_BETWEEN_BATCHES}ms before next batch...`);
+        await new Promise(resolve => setTimeout(resolve, DELAY_BETWEEN_BATCHES));
+      }
+    }
+    
+    console.log('Import complete!');
+    console.log(`Processed ${processedStocks.length} stocks, saved ${totalSaved} to database.`);
+    
+    // Disconnect from database
+    await mongoose.disconnect();
     
     return {
-      total: stocks.length,
-      completed,
-      failed
+      totalProcessed: processedStocks.length,
+      totalSaved,
+      success: true
     };
   } catch (error) {
-    console.error(`[API] importAllStocksAdaptive: ${error.message}`);
+    console.error('Error in import process:', error.message);
     
-    // Update import status to error
-    updateImportStatus({
-      status: IMPORT_STATUS.ERROR,
-      startTime: new Date(),
-      endTime: new Date(),
-      error: error.message
-    });
+    // Ensure database connection is closed
+    try {
+      await mongoose.disconnect();
+    } catch (err) {
+      console.error('Error disconnecting from database:', err.message);
+    }
     
-    throw error;
+    return {
+      error: error.message,
+      success: false
+    };
   }
 }
 
 // Export functions
 module.exports = {
-  importAllStocksAdaptive,
-  getImportStatus,
-  makeApiRequest,
-  updateImportStatus
+  importStocksWithEnhancedMetrics,
+  fetchComprehensiveFinancialData,
+  processStock
 };
+
+// Run import if called directly
+if (require.main === module) {
+  // Get limit from command line arguments
+  const limit = process.argv[2] ? parseInt(process.argv[2]) : 0;
+  
+  importStocksWithEnhancedMetrics(limit)
+    .then(result => {
+      console.log('Import result:', result);
+      process.exit(0);
+    })
+    .catch(error => {
+      console.error('Import failed:', error);
+      process.exit(1);
+    });
+}
