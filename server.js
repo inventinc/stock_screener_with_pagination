@@ -217,16 +217,26 @@ app.post('/api/refresh/stock', async (req, res) => {
     
     // Extract financial metrics
     let netDebtToEBITDA = null;
-    let evToEBIT = 0;
-    let rotce = 0;
-    let peRatio = 0;
-    let dividendYield = 0;
+    let evToEBIT = null;
+    let rotce = null;
+    let peRatio = null;
+    let dividendYield = null;
     
     // Get Debt/EBITDA from ratios if available
     if (ratios) {
-      netDebtToEBITDA = ratios.netDebtToEBITDA || ratios.debtToEBITDA;
-      peRatio = ratios.peRatio || quote?.pe || 0;
-      dividendYield = ratios.dividendYield || (profile?.lastDiv ? profile.lastDiv / price : 0);
+      // Important: Check for null/undefined before assignment
+      if (ratios.netDebtToEBITDA !== undefined && ratios.netDebtToEBITDA !== null) {
+        netDebtToEBITDA = ratios.netDebtToEBITDA;
+        console.log(`Using direct netDebtToEBITDA from ratios: ${netDebtToEBITDA}`);
+      } else if (ratios.debtToEBITDA !== undefined && ratios.debtToEBITDA !== null) {
+        netDebtToEBITDA = ratios.debtToEBITDA;
+        console.log(`Using direct debtToEBITDA from ratios: ${netDebtToEBITDA}`);
+      } else {
+        console.log('Ratio fields exist but Debt/EBITDA values are null/undefined');
+      }
+      
+      peRatio = ratios.peRatio || (quote?.pe !== undefined ? quote.pe : null);
+      dividendYield = ratios.dividendYield || (profile?.lastDiv && price ? profile.lastDiv / price : null);
     }
     
     // If Debt/EBITDA not available directly, calculate it
@@ -359,16 +369,22 @@ function calculateScore(details) {
   // Debt score (0-20)
   if (details.netDebtToEBITDA === null || details.netDebtToEBITDA === undefined) {
     score += 10; // Neutral score for missing data
+    console.log(`${symbol} Debt score: 10 (missing data)`);
   } else if (!isFinite(details.netDebtToEBITDA)) {
     score += 5; // Low score for infinite debt ratio
+    console.log(`${symbol} Debt score: 5 (infinite ratio)`);
   } else if (details.netDebtToEBITDA < 1) {
     score += 20;
+    console.log(`${symbol} Debt score: 20 (< 1)`);
   } else if (details.netDebtToEBITDA < 2) {
     score += 15;
+    console.log(`${symbol} Debt score: 15 (< 2)`);
   } else if (details.netDebtToEBITDA < 3) {
     score += 10;
+    console.log(`${symbol} Debt score: 10 (< 3)`);
   } else {
     score += 5;
+    console.log(`${symbol} Debt score: 5 (>= 3)`);
   }
   
   // Valuation score (0-20)

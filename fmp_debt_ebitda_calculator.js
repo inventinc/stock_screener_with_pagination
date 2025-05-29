@@ -1,10 +1,15 @@
 /**
- * FMP-Optimized Debt/EBITDA Calculation Module
+ * FMP-Optimized Debt/EBITDA Calculation Module - Fixed Version
  * 
  * This module provides functions to calculate Debt/EBITDA ratio from
  * Financial Model Prep API data when the direct ratio is not available.
  * 
  * Optimized for FMP API field names and data structure.
+ * 
+ * FIXES:
+ * - Ensures null values are preserved and not converted to zero
+ * - Improves logging for debugging calculation paths
+ * - Adds additional validation to prevent false zeros
  */
 
 /**
@@ -24,28 +29,43 @@ function calculateDebtToEBITDA(financials) {
   
   // Return early if financials object is missing
   if (!financials) {
+    console.log('Debt/EBITDA calculation: Missing financials object');
     result.error = 'Missing financials object';
     return result;
   }
   
   // Extract and store debt components (FMP field names)
-  const longTermDebt = financials.longTermDebt || 0;
-  const shortTermDebt = financials.shortTermDebt || 0;
+  const longTermDebt = financials.longTermDebt !== undefined ? financials.longTermDebt : null;
+  const shortTermDebt = financials.shortTermDebt !== undefined ? financials.shortTermDebt : null;
+  
   // FMP sometimes provides totalDebt directly
-  const totalDebt = financials.totalDebt || (longTermDebt + shortTermDebt);
+  let totalDebt = null;
+  if (financials.totalDebt !== undefined && financials.totalDebt !== null) {
+    totalDebt = financials.totalDebt;
+  } else if (longTermDebt !== null && shortTermDebt !== null) {
+    totalDebt = longTermDebt + shortTermDebt;
+  }
   
   result.components.longTermDebt = longTermDebt;
   result.components.shortTermDebt = shortTermDebt;
   result.components.totalDebt = totalDebt;
   
-  // Method 1: Calculate EBITDA from net income and add-backs (FMP field names)
-  const netIncome = financials.netIncome || 0;
-  const interestExpense = financials.interestExpense || 0;
-  const incomeTaxExpense = financials.incomeTaxExpense || 0;
-  // FMP typically combines depreciation and amortization
-  const depreciationAndAmortization = financials.depreciationAndAmortization || 0;
+  console.log(`Debt/EBITDA calculation: Debt components - longTerm: ${longTermDebt}, shortTerm: ${shortTermDebt}, total: ${totalDebt}`);
   
-  const ebitda1 = netIncome + interestExpense + incomeTaxExpense + depreciationAndAmortization;
+  // Method 1: Calculate EBITDA from net income and add-backs (FMP field names)
+  const netIncome = financials.netIncome !== undefined ? financials.netIncome : null;
+  const interestExpense = financials.interestExpense !== undefined ? financials.interestExpense : null;
+  const incomeTaxExpense = financials.incomeTaxExpense !== undefined ? financials.incomeTaxExpense : null;
+  // FMP typically combines depreciation and amortization
+  const depreciationAndAmortization = financials.depreciationAndAmortization !== undefined ? financials.depreciationAndAmortization : null;
+  
+  let ebitda1 = null;
+  if (netIncome !== null && (interestExpense !== null || incomeTaxExpense !== null || depreciationAndAmortization !== null)) {
+    ebitda1 = netIncome;
+    if (interestExpense !== null) ebitda1 += interestExpense;
+    if (incomeTaxExpense !== null) ebitda1 += incomeTaxExpense;
+    if (depreciationAndAmortization !== null) ebitda1 += depreciationAndAmortization;
+  }
   
   result.components.netIncome = netIncome;
   result.components.interestExpense = interestExpense;
@@ -53,35 +73,49 @@ function calculateDebtToEBITDA(financials) {
   result.components.depreciationAndAmortization = depreciationAndAmortization;
   result.components.ebitda1 = ebitda1;
   
-  // Method 2: Calculate EBITDA from operating income (FMP field names)
-  const operatingIncome = financials.operatingIncome || financials.ebit || 0;
+  console.log(`Debt/EBITDA calculation: EBITDA method 1 components - netIncome: ${netIncome}, interestExpense: ${interestExpense}, incomeTaxExpense: ${incomeTaxExpense}, depreciationAndAmortization: ${depreciationAndAmortization}`);
+  console.log(`Debt/EBITDA calculation: EBITDA method 1 result: ${ebitda1}`);
   
-  const ebitda2 = operatingIncome + depreciationAndAmortization;
+  // Method 2: Calculate EBITDA from operating income (FMP field names)
+  const operatingIncome = financials.operatingIncome !== undefined ? financials.operatingIncome : 
+                         (financials.ebit !== undefined ? financials.ebit : null);
+  
+  let ebitda2 = null;
+  if (operatingIncome !== null && depreciationAndAmortization !== null) {
+    ebitda2 = operatingIncome + depreciationAndAmortization;
+  }
   
   result.components.operatingIncome = operatingIncome;
   result.components.ebitda2 = ebitda2;
   
+  console.log(`Debt/EBITDA calculation: EBITDA method 2 components - operatingIncome: ${operatingIncome}, depreciationAndAmortization: ${depreciationAndAmortization}`);
+  console.log(`Debt/EBITDA calculation: EBITDA method 2 result: ${ebitda2}`);
+  
   // Method 3: Use EBITDA directly if available (FMP provides this)
-  const directEBITDA = financials.ebitda || 0;
+  const directEBITDA = financials.ebitda !== undefined ? financials.ebitda : null;
   result.components.directEBITDA = directEBITDA;
   
+  console.log(`Debt/EBITDA calculation: Direct EBITDA: ${directEBITDA}`);
+  
   // Determine which EBITDA calculation to use
-  let finalEBITDA = 0;
-  if (directEBITDA > 0) {
+  let finalEBITDA = null;
+  if (directEBITDA !== null && directEBITDA > 0) {
     finalEBITDA = directEBITDA;
     result.method = 'direct';
-  } else if (ebitda1 > 0 && hasMinimumComponents(financials, 'method1')) {
+  } else if (ebitda1 !== null && ebitda1 > 0 && hasMinimumComponents(financials, 'method1')) {
     finalEBITDA = ebitda1;
     result.method = 'netIncome';
-  } else if (ebitda2 > 0 && hasMinimumComponents(financials, 'method2')) {
+  } else if (ebitda2 !== null && ebitda2 > 0 && hasMinimumComponents(financials, 'method2')) {
     finalEBITDA = ebitda2;
     result.method = 'operatingIncome';
   }
   
   result.components.finalEBITDA = finalEBITDA;
   
+  console.log(`Debt/EBITDA calculation: Final EBITDA (${result.method}): ${finalEBITDA}`);
+  
   // Check if we have all necessary components for a reliable calculation
-  result.hasAllComponents = (totalDebt > 0 && finalEBITDA > 0);
+  result.hasAllComponents = (totalDebt !== null && finalEBITDA !== null && finalEBITDA > 0);
   
   // Calculate the ratio (with division by zero protection)
   if (result.hasAllComponents) {
@@ -91,6 +125,9 @@ function calculateDebtToEBITDA(financials) {
     } else {
       result.value = totalDebt / finalEBITDA;
     }
+    console.log(`Debt/EBITDA calculation: Final value: ${result.value}`);
+  } else {
+    console.log(`Debt/EBITDA calculation: Cannot calculate, missing components. hasAllComponents: ${result.hasAllComponents}`);
   }
   
   return result;
@@ -138,11 +175,27 @@ function processFinancialData(fmpData) {
     netDebtToEBITDAMethod: null
   };
   
+  console.log('Processing financial data for Debt/EBITDA calculation');
+  
   // Check if Debt/EBITDA is directly available from ratios
-  if (fmpData.ratios && (fmpData.ratios.debtToEBITDA || fmpData.ratios.netDebtToEBITDA)) {
-    result.netDebtToEBITDA = fmpData.ratios.netDebtToEBITDA || fmpData.ratios.debtToEBITDA;
-    result.netDebtToEBITDACalculated = false;
+  if (fmpData.ratios && 
+      (fmpData.ratios.debtToEBITDA !== undefined || fmpData.ratios.netDebtToEBITDA !== undefined)) {
+    
+    // Important: Check for null/undefined before assignment
+    if (fmpData.ratios.netDebtToEBITDA !== undefined && fmpData.ratios.netDebtToEBITDA !== null) {
+      result.netDebtToEBITDA = fmpData.ratios.netDebtToEBITDA;
+      result.netDebtToEBITDACalculated = false;
+      console.log(`Using direct netDebtToEBITDA from ratios: ${result.netDebtToEBITDA}`);
+    } else if (fmpData.ratios.debtToEBITDA !== undefined && fmpData.ratios.debtToEBITDA !== null) {
+      result.netDebtToEBITDA = fmpData.ratios.debtToEBITDA;
+      result.netDebtToEBITDACalculated = false;
+      console.log(`Using direct debtToEBITDA from ratios: ${result.netDebtToEBITDA}`);
+    } else {
+      console.log('Ratio fields exist but values are null/undefined');
+    }
   } else {
+    console.log('No direct Debt/EBITDA ratio available, attempting calculation');
+    
     // Prepare financial data for custom calculation
     const financialsForCalculation = {
       // Balance sheet items
@@ -169,6 +222,9 @@ function processFinancialData(fmpData) {
       result.netDebtToEBITDA = calculationResult.value;
       result.netDebtToEBITDACalculated = true;
       result.netDebtToEBITDAMethod = calculationResult.method;
+      console.log(`Successfully calculated Debt/EBITDA: ${result.netDebtToEBITDA} using method: ${result.netDebtToEBITDAMethod}`);
+    } else {
+      console.log('Could not calculate Debt/EBITDA, keeping as null');
     }
   }
   
