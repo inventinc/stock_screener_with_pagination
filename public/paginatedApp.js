@@ -424,7 +424,7 @@ document.addEventListener('DOMContentLoaded', function() {
                     </div>
                     <div class="metric">
                         <div class="metric-label">Debt/EBITDA</div>
-                        <div class="metric-value">${formatDebtToEBITDA(stock.netDebtToEBITDA)}</div>
+                        <div class="metric-value">${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</div>
                     </div>
                     <div class="metric">
                         <div class="metric-label">ROTCE</div>
@@ -483,7 +483,7 @@ document.addEventListener('DOMContentLoaded', function() {
                 <td>${stock.formattedMarketCap || formatLargeNumber(stock.marketCap) || 'N/A'}</td>
                 <td>${stock.peRatio ? stock.peRatio.toFixed(2) : 'N/A'}</td>
                 <td>${stock.dividendYield ? (stock.dividendYield * 100).toFixed(2) + '%' : 'N/A'}</td>
-                <td>${formatDebtToEBITDA(stock.netDebtToEBITDA)}</td>
+                <td>${stock.netDebtToEBITDA ? stock.netDebtToEBITDA.toFixed(2) + 'x' : 'N/A'}</td>
                 <td>${stock.rotce ? (stock.rotce * 100).toFixed(2) + '%' : 'N/A'}</td>
             `;
             
@@ -494,23 +494,6 @@ document.addEventListener('DOMContentLoaded', function() {
         
         // Add table to container
         stockTableContainer.appendChild(table);
-    }
-    
-    /**
-     * Format Debt/EBITDA value with improved handling of edge cases
-     * @param {Number|null} value - Debt/EBITDA value
-     * @returns {String} Formatted value for display
-     */
-    function formatDebtToEBITDA(value) {
-        if (value === null || value === undefined) {
-            return 'N/A';
-        } else if (value === 0) {
-            return '0.00x';
-        } else if (!isFinite(value)) {
-            return 'High';
-        } else {
-            return value.toFixed(2) + 'x';
-        }
     }
     
     /**
