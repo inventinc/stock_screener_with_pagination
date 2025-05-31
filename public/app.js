@@ -4,6 +4,8 @@
  */
 
 document.addEventListener('DOMContentLoaded', function() {
+    console.log('DOM content loaded, initializing application...');
+    
     // Initialize tooltips
     initTooltips();
     
@@ -36,7 +38,7 @@ document.addEventListener('DOMContentLoaded', function() {
         const searchTerm = searchInput.value.trim().toLowerCase();
         return stocks.filter(stock => 
             stock.symbol.toLowerCase().includes(searchTerm) || 
-            stock.name.toLowerCase().includes(searchTerm) ||
+            (stock.name && stock.name.toLowerCase().includes(searchTerm)) ||
             (stock.sector && stock.sector.toLowerCase().includes(searchTerm))
         );
     };
@@ -45,7 +47,10 @@ document.addEventListener('DOMContentLoaded', function() {
     loadSampleData();
     
     // Then try to load live data
-    loadLiveData();
+    setTimeout(() => {
+        console.log('Attempting to load live data...');
+        loadLiveData();
+    }, 1000);
 });
 
 /**
@@ -621,7 +626,7 @@ function filterStocks() {
             const searchTerm = searchInput.value.trim().toLowerCase();
             filteredStocks = filteredStocks.filter(stock => 
                 stock.symbol.toLowerCase().includes(searchTerm) || 
-                stock.name.toLowerCase().includes(searchTerm) ||
+                (stock.name && stock.name.toLowerCase().includes(searchTerm)) ||
                 (stock.sector && stock.sector.toLowerCase().includes(searchTerm))
             );
         }
@@ -754,9 +759,9 @@ function renderStocks(stocks) {
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${stock.symbol}</td>
-            <td>${stock.name}</td>
+            <td>${stock.name || 'N/A'}</td>
             <td>${stock.sector || 'N/A'}</td>
-            <td data-metric="price">$${stock.price.toFixed(2)}</td>
+            <td data-metric="price">$${stock.price ? stock.price.toFixed(2) : 'N/A'}</td>
             <td data-metric="debtEbitda">${stock.debtEbitda ? stock.debtEbitda.toFixed(2) : 'N/A'}</td>
             <td data-metric="fcfNi">${stock.fcfNi ? stock.fcfNi.toFixed(2) : 'N/A'}</td>
             <td data-metric="evEbit">${stock.evEbit ? stock.evEbit.toFixed(1) : 'N/A'}</td>
@@ -793,9 +798,9 @@ function renderStocks(stocks) {
                 <div class="symbol">${stock.symbol}</div>
                 <div class="score">${stock.score ? stock.score.toFixed(0) : 'N/A'}</div>
             </div>
-            <div class="name">${stock.name}</div>
+            <div class="name">${stock.name || 'N/A'}</div>
             <div class="sector">${stock.sector || 'N/A'}</div>
-            <div class="price">$${stock.price.toFixed(2)}</div>
+            <div class="price">$${stock.price ? stock.price.toFixed(2) : 'N/A'}</div>
             <div class="metrics">
                 <div class="metric" data-metric="debtEbitda">
                     <div class="metric-label">Debt/EBITDA</div>
@@ -911,6 +916,8 @@ function calculateAverageScore(stocks) {
  * Load sample data
  */
 function loadSampleData() {
+    console.log('Loading sample data...');
+    
     // Sample stock data
     window.allStocks = [
         { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', price: 198.45, marketCap: 3200000000000, debtEbitda: 0.32, fcfNi: 1.12, evEbit: 8.7, rotce: 42.3, score: 87 },
@@ -926,6 +933,8 @@ function loadSampleData() {
         { symbol: 'V', name: 'Visa Inc.', sector: 'Financial Services', price: 278.45, marketCap: 580000000000, debtEbitda: 0.22, fcfNi: 1.15, evEbit: 7.9, rotce: 45.2, score: 89 },
         { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', price: 198.76, marketCap: 570000000000, debtEbitda: 0.65, fcfNi: 0.88, evEbit: 12.5, rotce: 18.7, score: 72 }
     ];
+    
+    console.log(`Loaded ${window.allStocks.length} sample stocks`);
     
     // Initialize with some active filters
     const largeCapChip = document.querySelector('.filter-chip[data-filter="market-cap"][data-value="large"]');
@@ -948,6 +957,8 @@ function loadSampleData() {
  * Load live data from API and refresh database
  */
 function loadLiveData() {
+    console.log('Attempting to load live data from API...');
+    
     // Show loading indicator
     const stocksContainer = document.getElementById('stocks-container');
     if (!stocksContainer) {
@@ -957,68 +968,133 @@ function loadLiveData() {
     
     stocksContainer.innerHTML = '<div class="loading-indicator">Loading stocks data...</div>';
     
+    // Get the current URL to determine API base URL
+    const currentUrl = window.location.origin;
+    console.log(`Current URL: ${currentUrl}`);
+    
     // First, try to refresh the database with live API data
-    fetch('/api/stocks/refresh-all', {
-        method: 'POST'
-    })
-    .then(response => {
-        console.log('Refresh all stocks initiated');
-        
-        // Now fetch the stocks from the database
-        return fetch('/api/stocks');
-    })
-    .then(response => {
-        if (!response.ok) {
-            throw new Error('Network response was not ok');
-        }
-        return response.json();
-    })
-    .then(data => {
-        console.log('Received data:', data);
-        
-        // Check if we have stocks data
-        if (data.stocks && data.stocks.length > 0) {
-            // Store stocks data globally
-            window.allStocks = data.stocks.map(stock => ({
-                symbol: stock.symbol,
-                name: stock.companyName,
-                sector: stock.sector || 'Unknown',
-                price: stock.price || 0,
-                marketCap: stock.marketCap || 0,
-                debtEbitda: stock.financials?.debtToEbitda || 0,
-                fcfNi: stock.financials?.fcfToNi || 0,
-                evEbit: stock.financials?.evToEbit || 0,
-                rotce: stock.financials?.rotce || 0,
-                score: stock.ranking?.combinedScore || 0
-            }));
+    console.log('Initiating database refresh...');
+    
+    // Use XMLHttpRequest instead of fetch for better compatibility
+    const refreshXhr = new XMLHttpRequest();
+    refreshXhr.open('POST', `${currentUrl}/api/stocks/refresh-all`, true);
+    refreshXhr.setRequestHeader('Content-Type', 'application/json');
+    
+    refreshXhr.onload = function() {
+        if (this.status >= 200 && this.status < 300) {
+            console.log('Refresh all stocks initiated successfully');
+            console.log('Response:', this.responseText);
             
-            console.log('Mapped stocks:', window.allStocks);
-            
-            // Update applied filters
-            updateAppliedFilters();
-            
-            // Filter stocks
-            filterStocks();
+            // Now fetch the stocks from the database
+            fetchStocksData(currentUrl);
         } else {
-            console.warn('No stocks data received from API');
-        }
-    })
-    .catch(error => {
-        console.error('Error fetching stocks:', error);
-        if (stocksContainer) {
-            stocksContainer.innerHTML = `
-                <div class="error-message">
-                    <h3>Error loading stocks data</h3>
-                    <p>${error.message}</p>
-                    <button id="retry-load" class="btn btn-primary">Retry</button>
-                </div>
-            `;
+            console.error('Error refreshing stocks:', this.status, this.statusText);
+            console.log('Response:', this.responseText);
             
-            // Add retry button functionality
-            const retryButton = document.getElementById('retry-load');
-            if (retryButton) {
-                retryButton.addEventListener('click', loadLiveData);
-            }
+            // Try to fetch stocks anyway
+            fetchStocksData(currentUrl);
         }
-    });
+    };
+    
+    refreshXhr.onerror = function() {
+        console.error('Network error during refresh');
+        
+        // Try to fetch stocks anyway
+        fetchStocksData(currentUrl);
+    };
+    
+    refreshXhr.send();
+}
+
+/**
+ * Fetch stocks data from API
+ * @param {string} baseUrl - API base URL
+ */
+function fetchStocksData(baseUrl) {
+    console.log(`Fetching stocks data from ${baseUrl}/api/stocks`);
+    
+    // Use XMLHttpRequest instead of fetch for better compatibility
+    const xhr = new XMLHttpRequest();
+    xhr.open('GET', `${baseUrl}/api/stocks`, true);
+    
+    xhr.onload = function() {
+        if (this.status >= 200 && this.status < 300) {
+            console.log('Successfully fetched stocks data');
+            
+            try {
+                const data = JSON.parse(this.responseText);
+                console.log('Received data:', data);
+                
+                // Check if we have stocks data
+                if (data.stocks && data.stocks.length > 0) {
+                    console.log(`Received ${data.stocks.length} stocks from API`);
+                    
+                    // Store stocks data globally
+                    window.allStocks = data.stocks.map(stock => ({
+                        symbol: stock.symbol,
+                        name: stock.companyName,
+                        sector: stock.sector || 'Unknown',
+                        price: stock.price || 0,
+                        marketCap: stock.marketCap || 0,
+                        debtEbitda: stock.financials?.debtToEbitda || 0,
+                        fcfNi: stock.financials?.fcfToNi || 0,
+                        evEbit: stock.financials?.evToEbit || 0,
+                        rotce: stock.financials?.rotce || 0,
+                        score: stock.ranking?.combinedScore || 0
+                    }));
+                    
+                    console.log('Mapped stocks:', window.allStocks);
+                    
+                    // Update applied filters
+                    updateAppliedFilters();
+                    
+                    // Filter stocks
+                    filterStocks();
+                } else {
+                    console.warn('No stocks data received from API');
+                    showApiError('No stocks data received from API');
+                }
+            } catch (error) {
+                console.error('Error parsing JSON response:', error);
+                showApiError(`Error parsing API response: ${error.message}`);
+            }
+        } else {
+            console.error('Error fetching stocks:', this.status, this.statusText);
+            showApiError(`Error fetching stocks: ${this.status} ${this.statusText}`);
+        }
+    };
+    
+    xhr.onerror = function() {
+        console.error('Network error during fetch');
+        showApiError('Network error while fetching stocks data');
+    };
+    
+    xhr.send();
+}
+
+/**
+ * Show API error message
+ * @param {string} message - Error message
+ */
+function showApiError(message) {
+    const stocksContainer = document.getElementById('stocks-container');
+    if (!stocksContainer) return;
+    
+    stocksContainer.innerHTML = `
+        <div class="error-message">
+            <h3>Error loading stocks data</h3>
+            <p>${message}</p>
+            <p>Using sample data instead.</p>
+            <button id="retry-load" class="btn btn-primary">Retry Live Data</button>
+        </div>
+    `;
+    
+    // Add retry button functionality
+    const retryButton = document.getElementById('retry-load');
+    if (retryButton) {
+        retryButton.addEventListener('click', loadLiveData);
+    }
+    
+    // Load sample data as fallback
+    loadSampleData();
 }
