@@ -1016,29 +1016,3 @@ function loadSampleData() {
     // Activate rank momentum toggle
     document.getElementById('rank-momentum-toggle').classList.add('active');
 }
-
-
-async function fetchRanking(method) {
-  try {
-    const response = await fetch(`/api/filters/ranking/${method}`);
-    const data = await response.json();
-
-    const resultsContainer = document.getElementById('results');
-    resultsContainer.innerHTML = '';
-
-    data.forEach(stock => {
-      const card = document.createElement('div');
-      card.className = 'stock-card';
-      card.style = 'border: 1px solid #ccc; padding: 10px; width: 300px;';
-      card.innerHTML = `
-        <h3>${stock.companyName} (${stock.symbol})</h3>
-        <p><strong>Sector:</strong> ${stock.sector}</p>
-        <p><strong>Price:</strong> $${stock.price?.toFixed(2) ?? 'N/A'}</p>
-        <p><strong>Market Cap:</strong> $${stock.marketCap ? (stock.marketCap / 1e9).toFixed(2) + 'B' : 'N/A'}</p>
-      `;
-      resultsContainer.appendChild(card);
-    });
-  } catch (err) {
-    console.error('Error fetching ranking:', err);
-  }
-}

@@ -346,62 +346,14 @@ router.get('/exclude-flags/:flag', async (req, res) => {
 });
 
 /**
-
-/**
  * @route   GET /api/filters/ranking/:method
- * @desc    Get stocks based on new ranking methods
+ * @desc    Get stocks ranked by specified method
+ * @access  Public
  */
 router.get('/ranking/:method', async (req, res) => {
-  const method = req.params.method;
-  const Stock = require('../models/Stock');
-  let query = {};
-
   try {
-    switch (method) {
-      case 'founders-fortune':
-        query = {
-          'ownership.insiderPercent': { $gt: 0.1 },
-          'financials.debtToEbitda': { $lt: 2 },
-          'financials.revenueGrowth': { $gt: 0.1 },
-          'financials.fcfToNi': { $gt: 1 },
-          'shares.outstandingGrowth': { $lt: 0 }  // Assuming this field exists
-        };
-        break;
-
-      case 'hidden-moat':
-        query = {
-          'financials.roic': { $gt: 0.15 },
-          'financials.grossMargin': { $gt: 0.4 },
-          'financials.evToEbit': { $lt: 12 },
-          'financials.debtToEquity': { $lt: 1 }
-        };
-        break;
-
-      case 'resilient-income':
-        query = {
-          'dividends.yield': { $gt: 0.03 },
-          'dividends.growth': { $gt: 0 },
-          'dividends.payoutRatio': { $lt: 0.75 },
-          'financials.debtToEbitda': { $lt: 2 },
-          'financials.operatingMargin': { $gt: 0.15 },
-          'beta': { $lt: 1.2 }
-        };
-        break;
-
-      default:
-        return res.status(400).json({ message: 'Invalid ranking method' });
-    }
-
-    const stocks = await Stock.find(query)
-      .select('symbol companyName sector price marketCap financials dividends ownership shares beta')
-      .limit(50);
-
-    res.json(stocks);
-  } catch (err) {
-    console.error(err.message);
-    res.status(500).send('Server Error');
-  }
-});
+    const { method } = req.params;
+    let sortField;
     
     switch (method) {
       case 'owner-earnings':
