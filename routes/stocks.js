@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const Stock = require('../models/Stock');
 const fmpService = require('../services/fmpService');
+const axios = require('axios'); // Import axios for internal API calls
 
 /**
  * @route   GET /api/stocks
@@ -428,18 +429,14 @@ router.post('/refresh-all', async (req, res) => {
           const symbol = stockData.symbol;
           console.log(`Processing test symbol: ${symbol}`);
           
-          // Call refresh endpoint for each symbol
-          const response = await fetch(`${req.protocol}://${req.get('host')}/api/stocks/refresh/${symbol}`, {
-            method: 'POST'
-          });
+          // FIXED: Using axios instead of fetch for internal API calls
+          const apiUrl = `${req.protocol}://${req.get('host')}/api/stocks/refresh/${symbol}`;
+          console.log(`Making API call to: ${apiUrl}`);
           
-          if (!response.ok) {
-            console.error(`Error refreshing ${symbol}: ${response.status} ${response.statusText}`);
-          } else {
-            console.log(`Successfully refreshed ${symbol}`);
-          }
+          const response = await axios.post(apiUrl);
+          console.log(`Successfully refreshed ${symbol}`);
         } catch (error) {
-          console.error(`Error processing ${stockData.symbol}:`, error);
+          console.error(`Error processing ${stockData.symbol}:`, error.message);
         }
       }
       
@@ -465,36 +462,30 @@ router.post('/refresh-all', async (req, res) => {
           
           console.log(`Processing ${symbol}`);
           
-          // Call refresh endpoint for each symbol
-          const response = await fetch(`${req.protocol}://${req.get('host')}/api/stocks/refresh/${symbol}`, {
-            method: 'POST'
-          });
+          // FIXED: Using axios instead of fetch for internal API calls
+          const apiUrl = `${req.protocol}://${req.get('host')}/api/stocks/refresh/${symbol}`;
           
-          if (!response.ok) {
-            console.error(`Error refreshing ${symbol}: ${response.status} ${response.statusText}`);
-          } else {
+          try {
+            const response = await axios.post(apiUrl);
             console.log(`Successfully refreshed ${symbol}`);
+          } catch (error) {
+            console.error(`Error refreshing ${symbol}:`, error.message);
           }
         } catch (error) {
-          console.error(`Error processing ${stockData.symbol}:`, error);
+          console.error(`Error processing ${stockData.symbol}:`, error.message);
         }
       }));
       
       // Delay between batches
       if (i + batchSize < symbols.length) {
-        console.log(`Waiting ${delay}ms before next batch...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
     
-    console.log('Finished processing all stocks');
+    console.log('Finished processing all symbols');
   } catch (err) {
     console.error('Error in POST /api/stocks/refresh-all:', err);
-    res.status(500).json({ 
-      message: 'Server error', 
-      error: err.message,
-      stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
-    });
+    // Don't send response here as it's already sent
   }
 });
 
