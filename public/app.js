@@ -71,7 +71,7 @@ function ensureStocksContainerExists() {
         // Create the stocks container
         stocksContainer = document.createElement('div');
         stocksContainer.id = 'stocks-container';
-        stocksContainer.className = 'table-view'; // Default to table view
+        stocksContainer.className = 'card-view'; // Default to card view
         
         // Find the appropriate place to insert it
         const mainContent = document.querySelector('.main-content .card-content');
@@ -284,7 +284,7 @@ function initFilterChips() {
 function initViewControls() {
     const cardViewButton = document.getElementById('card-view-button');
     const tableViewButton = document.getElementById('table-view-button');
-    const stocksContainer = document.getElementById('stocks-container');
+    const stocksContainer = document.getElementById('stocks-container') || ensureStocksContainerExists();
     
     // Check if elements exist before using them
     if (!cardViewButton || !tableViewButton) {
@@ -292,16 +292,9 @@ function initViewControls() {
         return;
     }
     
-    // Ensure stocks container exists
-    if (!stocksContainer) {
-        console.log('Stocks container not found in initViewControls, creating it');
-        ensureStocksContainerExists();
-    }
-    
     // Set card view as default
-    const container = document.getElementById('stocks-container');
-    if (container) {
-        container.className = 'card-view';
+    if (stocksContainer) {
+        stocksContainer.className = 'card-view';
         if (cardViewButton) cardViewButton.classList.add('active');
         if (tableViewButton) tableViewButton.classList.remove('active');
     }
@@ -309,7 +302,7 @@ function initViewControls() {
     if (cardViewButton) {
         cardViewButton.addEventListener('click', () => {
             console.log('Card view button clicked');
-            const container = document.getElementById('stocks-container');
+            const container = document.getElementById('stocks-container') || ensureStocksContainerExists();
             if (container) {
                 container.className = 'card-view';
             }
@@ -321,7 +314,7 @@ function initViewControls() {
     if (tableViewButton) {
         tableViewButton.addEventListener('click', () => {
             console.log('Table view button clicked');
-            const container = document.getElementById('stocks-container');
+            const container = document.getElementById('stocks-container') || ensureStocksContainerExists();
             if (container) {
                 container.className = 'table-view';
             }
@@ -335,59 +328,71 @@ function initViewControls() {
  * Initialize mobile bottom sheet
  */
 function initMobileBottomSheet() {
-    const filterButton = document.getElementById('filter-button');
-    const mobileBottomSheet = document.querySelector('.mobile-bottom-sheet');
-    const mobileBottomSheetOverlay = document.querySelector('.mobile-bottom-sheet-overlay');
-    const mobileFilterTabs = document.querySelectorAll('.filter-tab');
-    const mobileFilterSections = document.querySelectorAll('.mobile-filter-section');
+    const mobileFilterButton = document.getElementById('mobile-filter-button');
+    const filterBottomSheet = document.getElementById('filter-bottom-sheet');
+    const bottomSheetOverlay = document.getElementById('bottom-sheet-overlay');
+    const closeBottomSheet = document.getElementById('close-bottom-sheet');
+    const filterTabs = document.querySelectorAll('.filter-tab');
+    const filterContents = document.querySelectorAll('.filter-content');
     
     // Check if elements exist
-    if (!filterButton || !mobileBottomSheet || !mobileBottomSheetOverlay) {
+    if (!mobileFilterButton || !filterBottomSheet || !bottomSheetOverlay) {
         console.log('Mobile bottom sheet elements not found');
         return;
     }
     
     // Open bottom sheet when filter button is clicked
-    filterButton.addEventListener('click', () => {
-        mobileBottomSheet.classList.add('open');
-        mobileBottomSheetOverlay.style.display = 'block';
+    mobileFilterButton.addEventListener('click', () => {
+        filterBottomSheet.classList.add('open');
+        bottomSheetOverlay.style.display = 'block';
         document.body.style.overflow = 'hidden'; // Prevent scrolling
     });
     
     // Close bottom sheet when overlay is clicked
-    mobileBottomSheetOverlay.addEventListener('click', () => {
-        mobileBottomSheet.classList.remove('open');
-        mobileBottomSheetOverlay.style.display = 'none';
-        document.body.style.overflow = ''; // Allow scrolling
-    });
+    if (bottomSheetOverlay) {
+        bottomSheetOverlay.addEventListener('click', () => {
+            filterBottomSheet.classList.remove('open');
+            bottomSheetOverlay.style.display = 'none';
+            document.body.style.overflow = ''; // Allow scrolling
+        });
+    }
+    
+    // Close bottom sheet when close button is clicked
+    if (closeBottomSheet) {
+        closeBottomSheet.addEventListener('click', () => {
+            filterBottomSheet.classList.remove('open');
+            bottomSheetOverlay.style.display = 'none';
+            document.body.style.overflow = ''; // Allow scrolling
+        });
+    }
     
     // Handle filter tab clicks
-    mobileFilterTabs.forEach(tab => {
+    filterTabs.forEach(tab => {
         tab.addEventListener('click', () => {
             const tabType = tab.getAttribute('data-tab');
             
             // Remove active class from all tabs
-            mobileFilterTabs.forEach(t => t.classList.remove('active'));
+            filterTabs.forEach(t => t.classList.remove('active'));
             
             // Add active class to clicked tab
             tab.classList.add('active');
             
-            // Hide all filter sections
-            mobileFilterSections.forEach(section => {
-                section.style.display = 'none';
+            // Hide all filter contents
+            filterContents.forEach(content => {
+                content.classList.remove('active');
             });
             
-            // Show selected filter section
-            const selectedSection = document.querySelector(`.mobile-filter-section[data-section="${tabType}"]`);
-            if (selectedSection) {
-                selectedSection.style.display = 'block';
+            // Show selected filter content
+            const selectedContent = document.getElementById(`mobile-${tabType}-filters`);
+            if (selectedContent) {
+                selectedContent.classList.add('active');
             }
         });
     });
     
     // Set first tab as active by default
-    if (mobileFilterTabs.length > 0) {
-        mobileFilterTabs[0].click();
+    if (filterTabs.length > 0) {
+        filterTabs[0].click();
     }
 }
 
@@ -422,93 +427,14 @@ function initThemeToggle() {
  * Initialize customize metrics
  */
 function initCustomizeMetrics() {
-    const customizeButton = document.getElementById('customize-metrics-button');
-    const customizeModal = document.getElementById('customize-metrics-modal');
-    const customizeModalOverlay = document.getElementById('customize-modal-overlay');
-    const customizeModalClose = document.getElementById('customize-modal-close');
-    const customizeForm = document.getElementById('customize-metrics-form');
-    
-    // Check if elements exist
-    if (!customizeButton || !customizeModal || !customizeModalOverlay || !customizeModalClose || !customizeForm) {
+    const customizeButton = document.getElementById('customize-metrics');
+    if (!customizeButton) {
         console.log('Customize metrics elements not found');
         return;
     }
     
-    // Open modal when customize button is clicked
     customizeButton.addEventListener('click', () => {
-        customizeModal.style.display = 'block';
-        customizeModalOverlay.style.display = 'block';
-    });
-    
-    // Close modal when close button is clicked
-    customizeModalClose.addEventListener('click', () => {
-        customizeModal.style.display = 'none';
-        customizeModalOverlay.style.display = 'none';
-    });
-    
-    // Close modal when overlay is clicked
-    customizeModalOverlay.addEventListener('click', () => {
-        customizeModal.style.display = 'none';
-        customizeModalOverlay.style.display = 'none';
-    });
-    
-    // Handle form submission
-    customizeForm.addEventListener('submit', (e) => {
-        e.preventDefault();
-        
-        // Get selected metrics
-        const selectedMetrics = Array.from(customizeForm.querySelectorAll('input[type="checkbox"]:checked')).map(checkbox => checkbox.value);
-        
-        // Save selected metrics
-        localStorage.setItem('selectedMetrics', JSON.stringify(selectedMetrics));
-        
-        // Update UI
-        updateMetricsDisplay(selectedMetrics);
-        
-        // Close modal
-        customizeModal.style.display = 'none';
-        customizeModalOverlay.style.display = 'none';
-    });
-    
-    // Load saved metrics
-    const savedMetrics = JSON.parse(localStorage.getItem('selectedMetrics')) || ['price', 'debtEbitda', 'fcfNi', 'evEbit', 'rotce', 'score'];
-    
-    // Update checkboxes
-    savedMetrics.forEach(metric => {
-        const checkbox = customizeForm.querySelector(`input[value="${metric}"]`);
-        if (checkbox) {
-            checkbox.checked = true;
-        }
-    });
-    
-    // Update UI
-    updateMetricsDisplay(savedMetrics);
-}
-
-/**
- * Update metrics display based on selected metrics
- * @param {Array} selectedMetrics - Array of selected metric keys
- */
-function updateMetricsDisplay(selectedMetrics) {
-    // Update table headers
-    const tableHeaders = document.querySelectorAll('.stock-table th[data-metric]');
-    tableHeaders.forEach(header => {
-        const metric = header.getAttribute('data-metric');
-        header.style.display = selectedMetrics.includes(metric) ? 'table-cell' : 'none';
-    });
-    
-    // Update table cells
-    const tableCells = document.querySelectorAll('.stock-table td[data-metric]');
-    tableCells.forEach(cell => {
-        const metric = cell.getAttribute('data-metric');
-        cell.style.display = selectedMetrics.includes(metric) ? 'table-cell' : 'none';
-    });
-    
-    // Update card metrics
-    const cardMetrics = document.querySelectorAll('.stock-card .metric[data-metric]');
-    cardMetrics.forEach(metric => {
-        const metricKey = metric.getAttribute('data-metric');
-        metric.style.display = selectedMetrics.includes(metricKey) ? 'flex' : 'none';
+        alert('Customize metrics feature coming soon!');
     });
 }
 
@@ -517,7 +443,6 @@ function updateMetricsDisplay(selectedMetrics) {
  */
 function initSearch() {
     const searchInput = document.getElementById('search-input');
-    const searchClear = document.getElementById('search-clear');
     
     // Check if elements exist
     if (!searchInput) {
@@ -527,25 +452,9 @@ function initSearch() {
     
     // Handle input changes
     searchInput.addEventListener('input', () => {
-        // Show/hide clear button
-        if (searchClear) {
-            searchClear.style.display = searchInput.value ? 'block' : 'none';
-        }
-        
         // Filter stocks
         filterStocks();
     });
-    
-    // Handle clear button
-    if (searchClear) {
-        searchClear.addEventListener('click', () => {
-            searchInput.value = '';
-            searchClear.style.display = 'none';
-            
-            // Filter stocks
-            filterStocks();
-        });
-    }
 }
 
 // Store active filters
@@ -825,36 +734,42 @@ function renderStocks(stocks) {
         return;
     }
     
-    // Create table
-    const table = document.createElement('table');
-    table.className = 'stock-table';
-    
-    // Create table header
-    const thead = document.createElement('thead');
-    thead.innerHTML = `
-        <tr>
-            <th>Symbol</th>
-            <th>Name</th>
-            <th>Sector</th>
-            <th data-metric="price">Price</th>
-            <th data-metric="debtEbitda">Debt/EBITDA</th>
-            <th data-metric="fcfNi">FCF/NI</th>
-            <th data-metric="evEbit">EV/EBIT</th>
-            <th data-metric="rotce">ROTCE</th>
-            <th data-metric="score">Score</th>
-        </tr>
+    // Create table view
+    const tableView = document.createElement('div');
+    tableView.className = 'stock-table-container';
+    tableView.innerHTML = `
+        <table class="stock-table">
+            <thead>
+                <tr>
+                    <th>Symbol</th>
+                    <th>Name</th>
+                    <th>Sector</th>
+                    <th data-metric="price">Price</th>
+                    <th data-metric="debtEbitda">Debt/EBITDA</th>
+                    <th data-metric="fcfNi">FCF/NI</th>
+                    <th data-metric="evEbit">EV/EBIT</th>
+                    <th data-metric="rotce">ROTCE</th>
+                    <th data-metric="score">Score</th>
+                </tr>
+            </thead>
+            <tbody>
+            </tbody>
+        </table>
     `;
-    table.appendChild(thead);
     
-    // Create table body
-    const tbody = document.createElement('tbody');
+    const tbody = tableView.querySelector('tbody');
     
-    // Add rows
+    // Create cards view
+    const cardsView = document.createElement('div');
+    cardsView.className = 'stock-cards';
+    
+    // Add rows and cards
     stocks.forEach(stock => {
+        // Add table row
         const row = document.createElement('tr');
         row.innerHTML = `
             <td>${stock.symbol}</td>
-            <td>${stock.name || 'N/A'}</td>
+            <td>${stock.name || stock.companyName || 'N/A'}</td>
             <td>${stock.sector || 'N/A'}</td>
             <td data-metric="price">$${stock.price ? stock.price.toFixed(2) : 'N/A'}</td>
             <td data-metric="debtEbitda">${stock.debtEbitda ? stock.debtEbitda.toFixed(2) : 'N/A'}</td>
@@ -864,16 +779,7 @@ function renderStocks(stocks) {
             <td data-metric="score" class="score">${stock.score ? stock.score.toFixed(0) : 'N/A'}</td>
         `;
         tbody.appendChild(row);
-    });
-    
-    table.appendChild(tbody);
-    
-    // Create cards
-    const cardsContainer = document.createElement('div');
-    cardsContainer.className = 'stock-cards';
-    
-    // Add cards
-    stocks.forEach(stock => {
+        
         // Determine score color
         let scoreColorClass = '';
         if (stock.score >= 85) {
@@ -886,6 +792,7 @@ function renderStocks(stocks) {
             scoreColorClass = 'score-poor';
         }
         
+        // Add card
         const card = document.createElement('div');
         card.className = `stock-card ${scoreColorClass}`;
         card.innerHTML = `
@@ -893,7 +800,7 @@ function renderStocks(stocks) {
                 <div class="symbol">${stock.symbol}</div>
                 <div class="score">${stock.score ? stock.score.toFixed(0) : 'N/A'}</div>
             </div>
-            <div class="name">${stock.name || 'N/A'}</div>
+            <div class="name">${stock.name || stock.companyName || 'N/A'}</div>
             <div class="sector">${stock.sector || 'N/A'}</div>
             <div class="price">$${stock.price ? stock.price.toFixed(2) : 'N/A'}</div>
             <div class="metrics">
@@ -915,16 +822,21 @@ function renderStocks(stocks) {
                 </div>
             </div>
         `;
-        cardsContainer.appendChild(card);
+        cardsView.appendChild(card);
     });
     
-    // Add table and cards to container
-    stocksContainer.appendChild(table);
-    stocksContainer.appendChild(cardsContainer);
+    // Add views to container
+    stocksContainer.appendChild(tableView);
+    stocksContainer.appendChild(cardsView);
     
-    // Update metrics display
-    const savedMetrics = JSON.parse(localStorage.getItem('selectedMetrics')) || ['price', 'debtEbitda', 'fcfNi', 'evEbit', 'rotce', 'score'];
-    updateMetricsDisplay(savedMetrics);
+    // Show the active view
+    if (stocksContainer.className === 'card-view') {
+        tableView.style.display = 'none';
+        cardsView.style.display = 'grid';
+    } else {
+        tableView.style.display = 'block';
+        cardsView.style.display = 'none';
+    }
     
     console.log('Stocks rendered successfully');
 }
@@ -1128,18 +1040,24 @@ function fetchStocksData(baseUrl) {
                     console.log(`Received ${data.stocks.length} stocks from API`);
                     
                     // Store stocks data globally
-                    window.allStocks = data.stocks.map(stock => ({
-                        symbol: stock.symbol,
-                        name: stock.companyName || stock.symbol,
-                        sector: stock.sector || 'Unknown',
-                        price: stock.price || 0,
-                        marketCap: stock.marketCap || 0,
-                        debtEbitda: stock.financials?.debtToEbitda || 0,
-                        fcfNi: stock.financials?.fcfToNi || 0,
-                        evEbit: stock.financials?.evToEbit || 0,
-                        rotce: stock.financials?.rotce || 0,
-                        score: stock.ranking?.combinedScore || 0
-                    }));
+                    window.allStocks = data.stocks.map(stock => {
+                        // Extract metrics from financials object if available
+                        const financials = stock.financials || {};
+                        
+                        return {
+                            symbol: stock.symbol,
+                            name: stock.companyName || stock.symbol,
+                            sector: stock.sector || 'Unknown',
+                            price: stock.price || 0,
+                            marketCap: stock.marketCap || 0,
+                            // Map financials to top-level properties for filtering and display
+                            debtEbitda: financials.debtToEbitda || 0,
+                            fcfNi: financials.fcfToNi || 0,
+                            evEbit: financials.evToEbit || 0,
+                            rotce: financials.rotce || 0,
+                            score: (stock.ranking && stock.ranking.combinedScore) || 0
+                        };
+                    });
                     
                     console.log('Mapped stocks:', window.allStocks);
                     
@@ -1200,6 +1118,14 @@ function showApiError(message) {
 
 // Ensure stocks container exists on window load
 window.addEventListener('load', function() {
-    console.log('Window loaded, ensuring stocks container exists');
+    console.log('Window loaded, ensuring stocks are displayed');
+    
+    // Ensure stocks container exists
     ensureStocksContainerExists();
+    
+    // Check if we have stocks data
+    if (!window.allStocks || window.allStocks.length === 0) {
+        console.log('No stocks data found on window load, triggering loadLiveData');
+        loadLiveData();
+    }
 });
