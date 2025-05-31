@@ -10,16 +10,93 @@ const fmpService = require('../services/fmpService');
  */
 router.get('/', async (req, res) => {
   try {
+    console.log('GET /api/stocks - Fetching stocks with pagination');
     const page = parseInt(req.query.page) || 1;
     const limit = parseInt(req.query.limit) || 20;
     const skip = (page - 1) * limit;
     
+    console.log(`Pagination params: page=${page}, limit=${limit}, skip=${skip}`);
+    
     const stocks = await Stock.find()
-      .select('symbol companyName sector price marketCap volAvg')
+      .select('symbol companyName sector price marketCap volAvg financials.debtToEbitda financials.fcfToNi financials.evToEbit financials.rotce ranking.combinedScore')
       .skip(skip)
       .limit(limit);
       
     const total = await Stock.countDocuments();
+    
+    console.log(`Found ${stocks.length} stocks out of ${total} total`);
+    
+    if (stocks.length === 0) {
+      console.log('No stocks found in database. Attempting to fetch sample data.');
+      
+      // If no stocks in database, return sample data
+      const sampleStocks = [
+        { 
+          symbol: 'AAPL', 
+          companyName: 'Apple Inc.', 
+          sector: 'Technology', 
+          price: 198.45, 
+          marketCap: 3200000000000,
+          volAvg: 80000000,
+          financials: {
+            debtToEbitda: 0.32,
+            fcfToNi: 1.12,
+            evToEbit: 8.7,
+            rotce: 42.3
+          },
+          ranking: {
+            combinedScore: 87
+          }
+        },
+        { 
+          symbol: 'MSFT', 
+          companyName: 'Microsoft Corporation', 
+          sector: 'Technology', 
+          price: 412.78, 
+          marketCap: 3100000000000,
+          volAvg: 25000000,
+          financials: {
+            debtToEbitda: 0.45,
+            fcfToNi: 0.98,
+            evToEbit: 9.2,
+            rotce: 38.7
+          },
+          ranking: {
+            combinedScore: 82
+          }
+        },
+        { 
+          symbol: 'GOOG', 
+          companyName: 'Alphabet Inc.', 
+          sector: 'Technology', 
+          price: 176.32, 
+          marketCap: 2200000000000,
+          volAvg: 20000000,
+          financials: {
+            debtToEbitda: 0.28,
+            fcfToNi: 1.05,
+            evToEbit: 7.8,
+            rotce: 35.2
+          },
+          ranking: {
+            combinedScore: 85
+          }
+        }
+      ];
+      
+      console.log('Returning sample data with 3 stocks');
+      
+      return res.json({
+        stocks: sampleStocks,
+        pagination: {
+          total: sampleStocks.length,
+          page: 1,
+          limit: sampleStocks.length,
+          pages: 1
+        },
+        source: 'sample'
+      });
+    }
     
     res.json({
       stocks,
@@ -28,11 +105,12 @@ router.get('/', async (req, res) => {
         page,
         limit,
         pages: Math.ceil(total / limit)
-      }
+      },
+      source: 'database'
     });
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error in GET /api/stocks:', err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
@@ -44,16 +122,20 @@ router.get('/', async (req, res) => {
 router.get('/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
+    console.log(`GET /api/stocks/${symbol} - Fetching stock by symbol`);
+    
     const stock = await Stock.findOne({ symbol });
     
     if (!stock) {
+      console.log(`Stock not found in database: ${symbol}`);
       return res.status(404).json({ message: 'Stock not found' });
     }
     
+    console.log(`Successfully retrieved stock: ${symbol}`);
     res.json(stock);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error(`Error in GET /api/stocks/${req.params.symbol}:`, err);
+    res.status(500).json({ message: 'Server error', error: err.message });
   }
 });
 
@@ -65,13 +147,26 @@ router.get('/:symbol', async (req, res) => {
 router.post('/refresh/:symbol', async (req, res) => {
   try {
     const { symbol } = req.params;
+    console.log(`POST /api/stocks/refresh/${symbol} - Refreshing stock data from FMP API`);
+    
+    // Check if API key is configured
+    if (!process.env.FMP_API_KEY) {
+      console.error('FMP_API_KEY is not configured');
+      return res.status(500).json({ 
+        message: 'API key not configured', 
+        error: 'FMP_API_KEY environment variable is missing' 
+      });
+    }
     
     // Get company profile
     const profile = await fmpService.getCompanyProfile(symbol);
     
     if (!profile) {
+      console.log(`No profile found for ${symbol} in FMP API`);
       return res.status(404).json({ message: 'Stock not found in FMP API' });
     }
+    
+    console.log(`Successfully retrieved profile for ${symbol}, fetching additional data...`);
     
     // Get financial data
     const ratios = await fmpService.getFinancialRatios(symbol);
@@ -239,6 +334,8 @@ router.post('/refresh/:symbol', async (req, res) => {
       lastUpdated: new Date()
     };
     
+    console.log(`Processed data for ${symbol}, saving to database...`);
+    
     if (stock) {
       // If stock exists, update it
       if (stock.ranking && stock.ranking.combinedScore) {
@@ -257,16 +354,24 @@ router.post('/refresh/:symbol', async (req, res) => {
         { $set: stockData },
         { new: true }
       );
+      
+      console.log(`Updated existing stock: ${symbol}`);
     } else {
       // If stock doesn't exist, create it
       stock = new Stock(stockData);
       await stock.save();
+      
+      console.log(`Created new stock: ${symbol}`);
     }
     
     res.json(stock);
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error(`Error in POST /api/stocks/refresh/${req.params.symbol}:`, err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message,
+      stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
+    });
   }
 });
 
@@ -277,12 +382,26 @@ router.post('/refresh/:symbol', async (req, res) => {
  */
 router.post('/refresh-all', async (req, res) => {
   try {
+    console.log('POST /api/stocks/refresh-all - Refreshing all stocks from FMP API');
+    
+    // Check if API key is configured
+    if (!process.env.FMP_API_KEY) {
+      console.error('FMP_API_KEY is not configured');
+      return res.status(500).json({ 
+        message: 'API key not configured', 
+        error: 'FMP_API_KEY environment variable is missing' 
+      });
+    }
+    
     // Get all stock symbols from FMP API
     const symbols = await fmpService.getAllStockSymbols();
     
     if (!symbols || symbols.length === 0) {
+      console.error('No stocks found in FMP API');
       return res.status(404).json({ message: 'No stocks found in FMP API' });
     }
+    
+    console.log(`Retrieved ${symbols.length} symbols from FMP API`);
     
     // Start background refresh process
     res.json({ 
@@ -294,8 +413,44 @@ router.post('/refresh-all', async (req, res) => {
     const batchSize = 5;
     const delay = 1000; // 1 second delay between batches
     
+    console.log(`Processing stocks in batches of ${batchSize} with ${delay}ms delay between batches`);
+    
+    // For testing, just process a few stocks
+    const testSymbols = ['AAPL', 'MSFT', 'GOOG', 'AMZN', 'FB'];
+    const limitedSymbols = symbols.filter(s => testSymbols.includes(s.symbol));
+    
+    if (limitedSymbols.length > 0) {
+      console.log(`For testing, only processing these symbols: ${testSymbols.join(', ')}`);
+      
+      // Process test symbols
+      for (const stockData of limitedSymbols) {
+        try {
+          const symbol = stockData.symbol;
+          console.log(`Processing test symbol: ${symbol}`);
+          
+          // Call refresh endpoint for each symbol
+          const response = await fetch(`${req.protocol}://${req.get('host')}/api/stocks/refresh/${symbol}`, {
+            method: 'POST'
+          });
+          
+          if (!response.ok) {
+            console.error(`Error refreshing ${symbol}: ${response.status} ${response.statusText}`);
+          } else {
+            console.log(`Successfully refreshed ${symbol}`);
+          }
+        } catch (error) {
+          console.error(`Error processing ${stockData.symbol}:`, error);
+        }
+      }
+      
+      console.log('Finished processing test symbols');
+      return;
+    }
+    
+    // Process all symbols in batches
     for (let i = 0; i < symbols.length; i += batchSize) {
       const batch = symbols.slice(i, i + batchSize);
+      console.log(`Processing batch ${Math.floor(i/batchSize) + 1} of ${Math.ceil(symbols.length/batchSize)}`);
       
       // Process batch in parallel
       await Promise.all(batch.map(async (stockData) => {
@@ -304,26 +459,42 @@ router.post('/refresh-all', async (req, res) => {
           
           // Skip if not a US stock or if it's an ETF/index
           if (!symbol || symbol.includes('^') || symbol.includes('.')) {
+            console.log(`Skipping ${symbol} - not a regular US stock`);
             return;
           }
           
+          console.log(`Processing ${symbol}`);
+          
           // Call refresh endpoint for each symbol
-          await fetch(`${req.protocol}://${req.get('host')}/api/stocks/refresh/${symbol}`, {
+          const response = await fetch(`${req.protocol}://${req.get('host')}/api/stocks/refresh/${symbol}`, {
             method: 'POST'
           });
+          
+          if (!response.ok) {
+            console.error(`Error refreshing ${symbol}: ${response.status} ${response.statusText}`);
+          } else {
+            console.log(`Successfully refreshed ${symbol}`);
+          }
         } catch (error) {
-          console.error(`Error refreshing ${stockData.symbol}:`, error);
+          console.error(`Error processing ${stockData.symbol}:`, error);
         }
       }));
       
       // Delay between batches
       if (i + batchSize < symbols.length) {
+        console.log(`Waiting ${delay}ms before next batch...`);
         await new Promise(resolve => setTimeout(resolve, delay));
       }
     }
+    
+    console.log('Finished processing all stocks');
   } catch (err) {
-    console.error(err);
-    res.status(500).json({ message: 'Server error' });
+    console.error('Error in POST /api/stocks/refresh-all:', err);
+    res.status(500).json({ 
+      message: 'Server error', 
+      error: err.message,
+      stack: process.env.NODE_ENV === 'production' ? undefined : err.stack
+    });
   }
 });
 

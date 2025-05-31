@@ -1,319 +1,237 @@
 const axios = require('axios');
-const NodeCache = require('node-cache');
+require('dotenv').config();
 
-// Initialize cache with 30 minute TTL default
-const cache = new NodeCache({ stdTTL: 1800 });
+// Get API key and base URL from environment variables
+const API_KEY = process.env.FMP_API_KEY;
+const BASE_URL = process.env.FMP_API_BASE_URL || 'https://financialmodelingprep.com/api/v3';
 
-class FMPService {
-  constructor() {
-    this.apiKey = process.env.FMP_API_KEY;
-    this.baseUrl = process.env.FMP_API_BASE_URL || 'https://financialmodelingprep.com/api/v3';
-  }
+// Add console logging for debugging
+console.log('FMP Service initialized with:');
+console.log(`API Key present: ${!!API_KEY}`);
+console.log(`Base URL: ${BASE_URL}`);
 
-  /**
-   * Get company profile data
-   * @param {string} symbol - Stock symbol
-   * @returns {Promise} - Company profile data
-   */
-  async getCompanyProfile(symbol) {
-    const cacheKey = `profile_${symbol}`;
-    const cachedData = cache.get(cacheKey);
+/**
+ * Get company profile from FMP API
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Object>} - Company profile data
+ */
+async function getCompanyProfile(symbol) {
+  try {
+    console.log(`Fetching company profile for ${symbol}`);
+    const response = await axios.get(`${BASE_URL}/profile/${symbol}?apikey=${API_KEY}`);
+    console.log(`Profile API response status: ${response.status}`);
     
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/profile/${symbol}?apikey=${this.apiKey}`);
-      
-      if (response.data && response.data.length > 0) {
-        cache.set(cacheKey, response.data[0]);
-        return response.data[0];
-      }
-      
-      return null;
-    } catch (error) {
-      console.error(`Error fetching company profile for ${symbol}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get company financial ratios
-   * @param {string} symbol - Stock symbol
-   * @returns {Promise} - Financial ratios data
-   */
-  async getFinancialRatios(symbol) {
-    const cacheKey = `ratios_${symbol}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved profile for ${symbol}`);
+      return response.data[0];
     }
     
-    try {
-      const response = await axios.get(`${this.baseUrl}/ratios/${symbol}?limit=4&apikey=${this.apiKey}`);
-      
-      if (response.data && response.data.length > 0) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Error fetching financial ratios for ${symbol}:`, error.message);
-      throw error;
+    console.log(`No profile data found for ${symbol}`);
+    return null;
+  } catch (error) {
+    console.error(`Error fetching company profile for ${symbol}:`, error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
     }
-  }
-
-  /**
-   * Get company key metrics
-   * @param {string} symbol - Stock symbol
-   * @returns {Promise} - Key metrics data
-   */
-  async getKeyMetrics(symbol) {
-    const cacheKey = `metrics_${symbol}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/key-metrics/${symbol}?limit=4&apikey=${this.apiKey}`);
-      
-      if (response.data && response.data.length > 0) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Error fetching key metrics for ${symbol}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get company cash flow statement
-   * @param {string} symbol - Stock symbol
-   * @returns {Promise} - Cash flow statement data
-   */
-  async getCashFlowStatement(symbol) {
-    const cacheKey = `cashflow_${symbol}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/cash-flow-statement/${symbol}?limit=4&apikey=${this.apiKey}`);
-      
-      if (response.data && response.data.length > 0) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Error fetching cash flow statement for ${symbol}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get company income statement
-   * @param {string} symbol - Stock symbol
-   * @returns {Promise} - Income statement data
-   */
-  async getIncomeStatement(symbol) {
-    const cacheKey = `income_${symbol}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/income-statement/${symbol}?limit=4&apikey=${this.apiKey}`);
-      
-      if (response.data && response.data.length > 0) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Error fetching income statement for ${symbol}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get company balance sheet
-   * @param {string} symbol - Stock symbol
-   * @returns {Promise} - Balance sheet data
-   */
-  async getBalanceSheet(symbol) {
-    const cacheKey = `balance_${symbol}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/balance-sheet-statement/${symbol}?limit=4&apikey=${this.apiKey}`);
-      
-      if (response.data && response.data.length > 0) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Error fetching balance sheet for ${symbol}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get company insider transactions
-   * @param {string} symbol - Stock symbol
-   * @returns {Promise} - Insider transactions data
-   */
-  async getInsiderTransactions(symbol) {
-    const cacheKey = `insider_${symbol}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/insider-transactions/${symbol}?apikey=${this.apiKey}`);
-      
-      if (response.data && response.data.length > 0) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Error fetching insider transactions for ${symbol}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Search for stocks by query
-   * @param {string} query - Search query
-   * @returns {Promise} - Search results
-   */
-  async searchStocks(query) {
-    const cacheKey = `search_${query}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/search?query=${query}&limit=30&apikey=${this.apiKey}`);
-      
-      if (response.data) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error(`Error searching stocks for ${query}:`, error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get stock screener results based on parameters
-   * @param {Object} params - Screening parameters
-   * @returns {Promise} - Screener results
-   */
-  async screenStocks(params) {
-    // Create a cache key based on the parameters
-    const cacheKey = `screen_${JSON.stringify(params)}`;
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      // Build query string from params
-      const queryParams = new URLSearchParams();
-      
-      // Add API key
-      queryParams.append('apikey', this.apiKey);
-      
-      // Add all screening parameters
-      Object.keys(params).forEach(key => {
-        if (params[key] !== undefined && params[key] !== null) {
-          queryParams.append(key, params[key]);
-        }
-      });
-      
-      const response = await axios.get(`${this.baseUrl}/stock-screener?${queryParams.toString()}`);
-      
-      if (response.data) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error screening stocks:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Get all available stock symbols
-   * @returns {Promise} - List of stock symbols
-   */
-  async getAllStockSymbols() {
-    const cacheKey = 'all_symbols';
-    const cachedData = cache.get(cacheKey);
-    
-    if (cachedData) {
-      return cachedData;
-    }
-    
-    try {
-      const response = await axios.get(`${this.baseUrl}/stock/list?apikey=${this.apiKey}`);
-      
-      if (response.data) {
-        cache.set(cacheKey, response.data);
-        return response.data;
-      }
-      
-      return [];
-    } catch (error) {
-      console.error('Error fetching all stock symbols:', error.message);
-      throw error;
-    }
-  }
-
-  /**
-   * Clear cache for specific key or all cache
-   * @param {string} key - Cache key to clear (optional)
-   */
-  clearCache(key = null) {
-    if (key) {
-      cache.del(key);
-    } else {
-      cache.flushAll();
-    }
+    return null;
   }
 }
 
-module.exports = new FMPService();
+/**
+ * Get financial ratios from FMP API
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Array>} - Financial ratios data
+ */
+async function getFinancialRatios(symbol) {
+  try {
+    console.log(`Fetching financial ratios for ${symbol}`);
+    const response = await axios.get(`${BASE_URL}/ratios/${symbol}?apikey=${API_KEY}`);
+    console.log(`Ratios API response status: ${response.status}`);
+    
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved ${response.data.length} financial ratios for ${symbol}`);
+      return response.data;
+    }
+    
+    console.log(`No financial ratios found for ${symbol}`);
+    return [];
+  } catch (error) {
+    console.error(`Error fetching financial ratios for ${symbol}:`, error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
+    }
+    return [];
+  }
+}
+
+/**
+ * Get key metrics from FMP API
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Array>} - Key metrics data
+ */
+async function getKeyMetrics(symbol) {
+  try {
+    console.log(`Fetching key metrics for ${symbol}`);
+    const response = await axios.get(`${BASE_URL}/key-metrics/${symbol}?apikey=${API_KEY}`);
+    console.log(`Key metrics API response status: ${response.status}`);
+    
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved ${response.data.length} key metrics for ${symbol}`);
+      return response.data;
+    }
+    
+    console.log(`No key metrics found for ${symbol}`);
+    return [];
+  } catch (error) {
+    console.error(`Error fetching key metrics for ${symbol}:`, error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
+    }
+    return [];
+  }
+}
+
+/**
+ * Get cash flow statement from FMP API
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Array>} - Cash flow statement data
+ */
+async function getCashFlowStatement(symbol) {
+  try {
+    console.log(`Fetching cash flow statement for ${symbol}`);
+    const response = await axios.get(`${BASE_URL}/cash-flow-statement/${symbol}?apikey=${API_KEY}`);
+    console.log(`Cash flow API response status: ${response.status}`);
+    
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved ${response.data.length} cash flow statements for ${symbol}`);
+      return response.data;
+    }
+    
+    console.log(`No cash flow statement found for ${symbol}`);
+    return [];
+  } catch (error) {
+    console.error(`Error fetching cash flow statement for ${symbol}:`, error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
+    }
+    return [];
+  }
+}
+
+/**
+ * Get income statement from FMP API
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Array>} - Income statement data
+ */
+async function getIncomeStatement(symbol) {
+  try {
+    console.log(`Fetching income statement for ${symbol}`);
+    const response = await axios.get(`${BASE_URL}/income-statement/${symbol}?apikey=${API_KEY}`);
+    console.log(`Income statement API response status: ${response.status}`);
+    
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved ${response.data.length} income statements for ${symbol}`);
+      return response.data;
+    }
+    
+    console.log(`No income statement found for ${symbol}`);
+    return [];
+  } catch (error) {
+    console.error(`Error fetching income statement for ${symbol}:`, error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
+    }
+    return [];
+  }
+}
+
+/**
+ * Get balance sheet from FMP API
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Array>} - Balance sheet data
+ */
+async function getBalanceSheet(symbol) {
+  try {
+    console.log(`Fetching balance sheet for ${symbol}`);
+    const response = await axios.get(`${BASE_URL}/balance-sheet-statement/${symbol}?apikey=${API_KEY}`);
+    console.log(`Balance sheet API response status: ${response.status}`);
+    
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved ${response.data.length} balance sheets for ${symbol}`);
+      return response.data;
+    }
+    
+    console.log(`No balance sheet found for ${symbol}`);
+    return [];
+  } catch (error) {
+    console.error(`Error fetching balance sheet for ${symbol}:`, error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
+    }
+    return [];
+  }
+}
+
+/**
+ * Get insider transactions from FMP API
+ * @param {string} symbol - Stock symbol
+ * @returns {Promise<Array>} - Insider transactions data
+ */
+async function getInsiderTransactions(symbol) {
+  try {
+    console.log(`Fetching insider transactions for ${symbol}`);
+    const response = await axios.get(`${BASE_URL}/insider-trading?symbol=${symbol}&apikey=${API_KEY}`);
+    console.log(`Insider transactions API response status: ${response.status}`);
+    
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved ${response.data.length} insider transactions for ${symbol}`);
+      return response.data;
+    }
+    
+    console.log(`No insider transactions found for ${symbol}`);
+    return [];
+  } catch (error) {
+    console.error(`Error fetching insider transactions for ${symbol}:`, error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
+    }
+    return [];
+  }
+}
+
+/**
+ * Get all stock symbols from FMP API
+ * @returns {Promise<Array>} - All stock symbols
+ */
+async function getAllStockSymbols() {
+  try {
+    console.log('Fetching all stock symbols');
+    const response = await axios.get(`${BASE_URL}/stock/list?apikey=${API_KEY}`);
+    console.log(`Stock list API response status: ${response.status}`);
+    
+    if (response.data && response.data.length > 0) {
+      console.log(`Successfully retrieved ${response.data.length} stock symbols`);
+      return response.data;
+    }
+    
+    console.log('No stock symbols found');
+    return [];
+  } catch (error) {
+    console.error('Error fetching all stock symbols:', error.message);
+    if (error.response) {
+      console.error(`Status: ${error.response.status}, Data:`, error.response.data);
+    }
+    return [];
+  }
+}
+
+module.exports = {
+  getCompanyProfile,
+  getFinancialRatios,
+  getKeyMetrics,
+  getCashFlowStatement,
+  getIncomeStatement,
+  getBalanceSheet,
+  getInsiderTransactions,
+  getAllStockSymbols
+};
