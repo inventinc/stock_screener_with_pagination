@@ -49,14 +49,18 @@ const stockScreenerPresets = [
 function createPresetsUI() {
   console.log('Creating presets UI...');
   
-  // Get the ranking system section to replace
-  const rankingSystemSection = document.querySelector('.filter-section.ranking-system');
-  if (!rankingSystemSection) {
-    console.error('Ranking system section not found');
+  // Get the filters container instead of looking for ranking system
+  const filtersContainer = document.querySelector('.filters-container');
+  if (!filtersContainer) {
+    console.error('Filters container not found');
     return;
   }
   
-  console.log('Found ranking system section:', rankingSystemSection);
+  // Check if presets section already exists
+  if (document.querySelector('.presets-section')) {
+    console.log('Presets section already exists');
+    return;
+  }
   
   // Create the new presets section
   const presetsSection = document.createElement('div');
@@ -85,9 +89,16 @@ function createPresetsUI() {
     </div>
   `;
   
-  // Replace the ranking system section with the presets section
-  rankingSystemSection.parentNode.replaceChild(presetsSection, rankingSystemSection);
-  console.log('Replaced ranking system section with presets section');
+  // Find the ranking system section to replace, or just append to filters container
+  const rankingSystemSection = document.querySelector('.filter-section.ranking-system');
+  if (rankingSystemSection) {
+    console.log('Found ranking system section, replacing it');
+    rankingSystemSection.parentNode.replaceChild(presetsSection, rankingSystemSection);
+  } else {
+    console.log('No ranking system section found, appending to filters container');
+    // Append as the last filter section
+    filtersContainer.appendChild(presetsSection);
+  }
   
   // Add event listeners to the preset buttons
   document.querySelectorAll('.apply-preset-btn').forEach(button => {
@@ -126,13 +137,29 @@ function applyPreset(presetId) {
 
 // Function to clear all filters
 function clearAllFilters() {
-  // This function would need to be implemented based on the existing clear filters functionality
-  // For now, we'll simulate it by triggering the clear all button click
-  const clearAllButton = document.querySelector('button:contains("Clear All")');
+  // Find the clear all button by its ID or class instead of using :contains
+  const clearAllButton = document.getElementById('clear-all-filters');
   if (clearAllButton) {
+    console.log('Found Clear All button, clicking it');
     clearAllButton.click();
   } else {
-    console.log('Clear All button not found');
+    // Fallback: try to find by class
+    const clearButtons = document.querySelectorAll('.btn-clear, .clear-filters-btn');
+    if (clearButtons.length > 0) {
+      console.log('Found Clear button by class, clicking it');
+      clearButtons[0].click();
+    } else {
+      console.log('Clear All button not found, manually clearing filters');
+      // Manually clear active filter chips
+      document.querySelectorAll('.filter-chip.active').forEach(chip => {
+        chip.classList.remove('active');
+      });
+      
+      // Clear any input fields
+      document.querySelectorAll('.filter-input').forEach(input => {
+        input.value = '';
+      });
+    }
   }
 }
 
@@ -160,8 +187,12 @@ function updateResults() {
   // For now, we'll simulate it
   console.log('Updating results with new filters');
   
-  // In a real implementation, you might trigger an event or call a function
-  // that's already part of the application
+  // Try to find and call the existing filterStocks function
+  if (typeof window.filterStocks === 'function') {
+    window.filterStocks();
+  } else {
+    console.log('filterStocks function not found');
+  }
 }
 
 // Function to show a toast notification
@@ -313,9 +344,88 @@ function addPresetsStyles() {
       max-height: 1000px;
       overflow: visible;
     }
+    
+    /* Mobile styles for presets */
+    @media (max-width: 768px) {
+      .preset-card {
+        grid-template-columns: 1fr;
+        text-align: center;
+      }
+      
+      .preset-icon {
+        margin: 0 auto;
+      }
+      
+      .preset-description {
+        display: none; /* Hide description on mobile to save space */
+      }
+    }
   `;
   document.head.appendChild(styleElement);
   console.log('Presets styles added successfully');
+}
+
+// Function to add presets to mobile bottom sheet
+function addPresetsToMobileView() {
+  // Find the mobile filter tabs
+  const mobileFilterTabs = document.querySelector('.mobile-filter-tabs');
+  if (!mobileFilterTabs) {
+    console.log('Mobile filter tabs not found');
+    return;
+  }
+  
+  // Check if ranking tab exists and replace it with presets
+  const rankingTab = Array.from(mobileFilterTabs.querySelectorAll('.filter-tab')).find(tab => 
+    tab.textContent.trim().toLowerCase().includes('ranking')
+  );
+  
+  if (rankingTab) {
+    console.log('Found ranking tab in mobile view, replacing with presets');
+    rankingTab.innerHTML = '🎯 Presets';
+    rankingTab.setAttribute('data-tab', 'presets');
+  } else {
+    console.log('No ranking tab found in mobile view');
+    
+    // Check if presets tab already exists
+    const presetsTab = Array.from(mobileFilterTabs.querySelectorAll('.filter-tab')).find(tab => 
+      tab.textContent.trim().toLowerCase().includes('presets')
+    );
+    
+    if (!presetsTab) {
+      console.log('Adding new presets tab to mobile view');
+      const newTab = document.createElement('div');
+      newTab.className = 'filter-tab';
+      newTab.setAttribute('data-tab', 'presets');
+      newTab.innerHTML = '🎯 Presets';
+      mobileFilterTabs.appendChild(newTab);
+    }
+  }
+  
+  // Make sure the mobile bottom sheet content includes presets
+  const mobileBottomSheet = document.querySelector('.mobile-bottom-sheet-content');
+  if (mobileBottomSheet) {
+    // Check if presets section already exists in mobile view
+    if (!mobileBottomSheet.querySelector('.presets-section')) {
+      console.log('Adding presets section to mobile bottom sheet');
+      
+      // Clone the presets section from desktop
+      const desktopPresets = document.querySelector('.presets-section');
+      if (desktopPresets) {
+        const mobilePresets = desktopPresets.cloneNode(true);
+        mobilePresets.classList.add('mobile-filter-section');
+        mobilePresets.setAttribute('data-section', 'presets');
+        mobileBottomSheet.appendChild(mobilePresets);
+        
+        // Add event listeners to the cloned preset buttons
+        mobilePresets.querySelectorAll('.apply-preset-btn').forEach(button => {
+          button.addEventListener('click', function() {
+            const presetId = this.getAttribute('data-preset-id');
+            applyPreset(presetId);
+          });
+        });
+      }
+    }
+  }
 }
 
 // Initialize the presets feature
@@ -326,6 +436,7 @@ function initializePresets() {
   // Wait a short time to ensure DOM is fully processed
   setTimeout(() => {
     createPresetsUI();
+    addPresetsToMobileView();
     
     // Ensure presets section starts collapsed
     const presetsContent = document.getElementById('presets-content');
@@ -355,11 +466,17 @@ if (document.readyState === 'loading') {
 const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
-      // Check if ranking system section was added
-      if (document.querySelector('.filter-section.ranking-system') && 
+      // Check if filters container was added
+      if (document.querySelector('.filters-container') && 
           !document.querySelector('.presets-section')) {
-        console.log('Ranking system section detected in DOM changes, initializing presets');
+        console.log('Filters container detected in DOM changes, initializing presets');
         initializePresets();
+      }
+      
+      // Check if mobile filter tabs were added
+      if (document.querySelector('.mobile-filter-tabs')) {
+        console.log('Mobile filter tabs detected, adding presets to mobile view');
+        addPresetsToMobileView();
       }
     }
   }
