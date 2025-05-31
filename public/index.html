@@ -3,754 +3,472 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stock Screener</title>
-    <style>
-        /* Reset and Base Styles */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
-        }
-        
-        body {
-            background-color: #f5f5f7;
-            color: #333;
-            line-height: 1.6;
-        }
-        
-        /* CSS for Header */
-        header {
-            background-color: #fff;
-            padding: 10px 16px;
-            border-bottom: 1px solid #e1e4e8;
-        }
-        
-        .header-container {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-        
-        .logo-container {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-        }
-        
-        .logo-icon {
-            color: #0066ff;
-            font-size: 24px;
-        }
-        
-        .logo-text {
-            font-size: 20px;
-            font-weight: 600;
-            color: #0066ff;
-        }
-        
-        .api-status {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .api-status-indicator {
-            width: 8px;
-            height: 8px;
-            border-radius: 50%;
-        }
-        
-        .api-status-indicator.connected {
-            background-color: #28a745;
-        }
-        
-        .api-status-indicator.disconnected {
-            background-color: #dc3545;
-        }
-        
-        /* Stats Container */
-        .stats-container {
-            display: flex;
-            justify-content: space-around;
-            padding: 12px 16px;
-            background-color: #fff;
-            border-bottom: 1px solid #e1e4e8;
-            flex-wrap: wrap;
-            gap: 8px;
-        }
-        
-        .stat-item {
-            text-align: center;
-            flex: 1;
-            min-width: 80px;
-        }
-        
-        .stat-value {
-            font-size: 18px;
-            font-weight: 600;
-            color: #0066ff;
-        }
-        
-        .stat-label {
-            font-size: 12px;
-            color: #666;
-        }
-        
-        .last-updated {
-            width: 100%;
-            text-align: left;
-            font-size: 12px;
-            color: #666;
-            margin-top: 4px;
-        }
-        
-        /* Main Content */
-        main {
-            padding: 16px;
-            max-width: 1200px;
-            margin: 0 auto;
-        }
-        
-        /* Filters Section */
-        .filters-section {
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            margin-bottom: 16px;
-            overflow: hidden;
-        }
-        
-        .filters-header {
-            padding: 12px 16px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            border-bottom: 1px solid #e1e4e8;
-            cursor: pointer;
-        }
-        
-        .filters-title {
-            font-size: 18px;
-            font-weight: 600;
-        }
-        
-        .filters-toggle {
-            transition: transform 0.3s ease;
-        }
-        
-        .filters-toggle.collapsed {
-            transform: rotate(180deg);
-        }
-        
-        .filters-content {
-            padding: 16px;
-            transition: max-height 0.3s ease, padding 0.3s ease;
-            max-height: 1000px;
-        }
-        
-        .filters-content.collapsed { 
-            max-height: 0;
-            padding-top: 0;
-            padding-bottom: 0;
-            overflow: hidden;
-        }
-        
-        .filter-group {
-            margin-bottom: 16px;
-        }
-        
-        .filter-group-title {
-            font-size: 16px;
-            font-weight: 500;
-            margin-bottom: 8px;
-            display: flex;
-            align-items: center;
-            gap: 6px;
-        }
-        
-        .info-icon {
-            color: #0066ff;
-            font-size: 16px;
-            cursor: pointer;
-        }
-        
-        .filter-buttons {
-            display: flex;
-            flex-wrap: wrap;
-            gap: 8px;
-            margin-bottom: 12px;
-        }
-        
-        .preset-button {
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: none;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: background-color 0.2s ease;
-        }
-        
-        .preset-button.value {
-            background-color: #ffebee;
-            color: #c62828;
-        }
-        
-        .preset-button.growth {
-            background-color: #e8f5e9;
-            color: #2e7d32;
-        }
-        
-        .preset-button.dividend {
-            background-color: #e3f2fd;
-            color: #1565c0;
-        }
-        
-        .preset-button.quality {
-            background-color: #fff8e1;
-            color: #f9a825;
-        }
-        
-        .preset-button:hover {
-            filter: brightness(0.95);
-        }
-        
-        .preset-button.active {
-            filter: brightness(0.9);
-            box-shadow: inset 0 1px 2px rgba(0,0,0,0.1);
-        }
-        
-        .filter-button {
-            display: flex;
-            align-items: center;
-            gap: 6px;
-            padding: 8px 12px;
-            border-radius: 6px;
-            border: 1px solid #e1e4e8;
-            background-color: #fff;
-            font-size: 14px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-        }
-        
-        .filter-button:hover {
-            border-color: #0066ff;
-        }
-        
-        .filter-button.active {
-            background-color: #0066ff;
-            color: #fff;
-            border-color: #0066ff;
-        }
-        
-        .filter-button .icon {
-            font-size: 16px;
-        }
-        
-        /* View Controls */
-        .view-controls {
-            display: flex;
-            gap: 8px;
-            margin-bottom: 16px;
-            flex-wrap: wrap;
-        }
-        
-        .view-button {
-            flex: 1;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-            gap: 8px;
-            padding: 12px;
-            border-radius: 8px;
-            border: 1px solid #e1e4e8;
-            background-color: #fff;
-            font-size: 16px;
-            font-weight: 500;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            min-width: 120px;
-        }
-        
-        .view-button:hover {
-            border-color: #0066ff;
-        }
-        
-        .view-button.active {
-            background-color: #0066ff;
-            color: #fff;
-            border-color: #0066ff;
-        }
-        
-        .view-button .icon {
-            font-size: 18px;
-        }
-        
-        /* Search Bar */
-        .search-container {
-            margin-bottom: 16px;
-        }
-        
-        .search-input {
-            width: 100%;
-            padding: 12px 16px;
-            border-radius: 8px;
-            border: 1px solid #e1e4e8;
-            font-size: 16px;
-            outline: none;
-            transition: border-color 0.2s ease;
-        }
-        
-        .search-input:focus {
-            border-color: #0066ff;
-        }
-        
-        /* Stocks Section */
-        .stocks-section {
-            margin-bottom: 16px;
-        }
-        
-        .section-title {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 16px;
-        }
-        
-        /* Card View */
-        .stock-cards-container {
-            display: grid;
-            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-            gap: 16px;
-            min-height: 400px;
-        }
-        
-        .stock-card {
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-            padding: 16px;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
-        }
-        
-        .stock-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }
-        
-        .stock-card.incomplete-data {
-            border-left: 4px solid #f9a825;
-        }
-        
-        .stock-header {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 8px;
-        }
-        
-        .stock-symbol {
-            font-size: 20px;
-            font-weight: 700;
-            color: #0066ff;
-        }
-        
-        .stock-exchange {
-            font-size: 14px;
-            color: #666;
-        }
-        
-        .stock-name {
-            font-size: 16px;
-            margin-bottom: 12px;
-            color: #333;
-        }
-        
-        .stock-metrics {
-            display: grid;
-            grid-template-columns: repeat(2, 1fr);
-            gap: 12px;
-        }
-        
-        .metric {
-            display: flex;
-            flex-direction: column;
-        }
-        
-        .metric-label {
-            font-size: 12px;
-            color: #666;
-        }
-        
-        .metric-value {
-            font-size: 16px;
-            font-weight: 500;
-        }
-        
-        .score {
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-weight: 600;
-        }
-        
-        .score.excellent {
-            background-color: #e8f5e9;
-            color: #2e7d32;
-        }
-        
-        .score.good {
-            background-color: #fff8e1;
-            color: #f9a825;
-        }
-        
-        .score.average {
-            background-color: #e3f2fd;
-            color: #1565c0;
-        }
-        
-        .score.below-average {
-            background-color: #ffebee;
-            color: #c62828;
-        }
-        
-        .score.poor {
-            background-color: #ffebee;
-            color: #c62828;
-        }
-        
-        /* Table View */
-        .stock-table-container {
-            overflow-x: auto;
-            display: none;
-        }
-        
-        .stock-table {
-            width: 100%;
-            border-collapse: collapse;
-            background-color: #fff;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 1px 3px rgba(0,0,0,0.1);
-        }
-        
-        .stock-table th, .stock-table td {
-            padding: 12px 16px;
-            text-align: left;
-            border-bottom: 1px solid #e1e4e8;
-        }
-        
-        .stock-table th {
-            background-color: #f8f9fa;
-            font-weight: 600;
-            color: #333;
-        }
-        
-        .stock-table tr:last-child td {
-            border-bottom: none;
-        }
-        
-        .stock-table tr:hover {
-            background-color: #f8f9fa;
-        }
-        
-        /* Loading Progress */
-        .loading-progress-bar {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 4px;
-            background-color: #f0f0f0;
-            z-index: 1000;
-            display: none;
-        }
-        
-        .loading-progress-bar .progress-inner {
-            height: 100%;
-            background-color: #0066ff;
-            width: 0%;
-            transition: width 0.3s ease;
-        }
-        
-        .loading-progress-text {
-            position: fixed;
-            bottom: 20px;
-            right: 20px;
-            background-color: rgba(0, 0, 0, 0.7);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            z-index: 1000;
-            display: none;
-        }
-        
-        /* Tooltip */
-        #tooltip {
-            position: fixed;
-            background-color: rgba(0, 0, 0, 0.8);
-            color: white;
-            padding: 8px 12px;
-            border-radius: 4px;
-            font-size: 14px;
-            z-index: 1000;
-            pointer-events: none;
-            display: none;
-            max-width: 300px;
-        }
-        
-        /* Empty State */
-        .empty-state {
-            display: flex;
-            flex-direction: column;
-            align-items: center;
-            justify-content: center;
-            padding: 40px 20px;
-            text-align: center;
-        }
-        
-        .empty-icon {
-            font-size: 48px;
-            margin-bottom: 16px;
-            color: #ccc;
-        }
-        
-        .empty-title {
-            font-size: 20px;
-            font-weight: 600;
-            margin-bottom: 8px;
-            color: #666;
-        }
-        
-        .empty-message {
-            font-size: 16px;
-            color: #999;
-        }
-        
-        /* Responsive Adjustments */
-        @media (max-width: 768px) {
-            .stats-container {
-                flex-wrap: wrap;
-                justify-content: space-around;
-            }
-            
-            .stat-item {
-                min-width: 80px;
-                margin-bottom: 8px;
-            }
-            
-            .view-controls {
-                flex-wrap: wrap;
-            }
-            
-            .view-button {
-                flex: 1 0 calc(50% - 4px);
-            }
-            
-            .stock-metrics {
-                grid-template-columns: 1fr;
-            }
-        }
-        
-        @media (max-width: 480px) {
-            .header-container {
-                flex-direction: row;
-                align-items: center;
-            }
-            
-            .logo-text {
-                font-size: 18px;
-            }
-            
-            .filter-buttons {
-                flex-direction: column;
-                align-items: stretch;
-            }
-            
-            .view-button {
-                flex: 1 0 100%;
-            }
-        }
-    </style>
+    <title>Stock Screener - Modern UX</title>
+    <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="styles-card-redesign-fix.css">
+    <link rel="stylesheet" href="presets.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Roboto+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 </head>
 <body>
-    <header>
-        <div class="header-container">
-            <div class="logo-container">
-                <div class="logo-icon">📈</div>
-                <div class="logo-text">Stock Screener</div>
+  <section id="ranking-section" style="margin: 20px; padding: 10px; border: 1px solid #ddd;">
+    <h2>Stock Rankings</h2>
+    <div id="ranking-buttons" style="margin-bottom: 15px;">
+      <button onclick="fetchRanking('founders-fortune')">👑 Founder’s Fortune</button>
+      <button onclick="fetchRanking('hidden-moat')">🛡️ Hidden Moat Detector</button>
+      <button onclick="fetchRanking('resilient-income')">💰 Resilient Income Generator</button>
+    </div>
+    <div id="results" style="display: flex; flex-wrap: wrap; gap: 15px;"></div>
+  </section>
+
+    <div class="app-container">
+        <!-- Header -->
+        <header class="app-header">
+            <div class="logo">
+                <span>📊</span>
+                <span>Stock Screener</span>
             </div>
-            <div class="api-status">
-                <div id="api-status-indicator" class="api-status-indicator disconnected"></div>
-                <span id="api-status-text">disconnected</span>
+            <div class="header-actions">
+                <div class="theme-toggle" id="theme-toggle" aria-label="Toggle dark mode" data-tooltip="Switch between light and dark mode"></div>
+                <!-- User profile removed as requested -->
+            </div>
+        </header>
+        
+        <!-- Main Content Bento Grid -->
+        <div class="bento-grid">
+            <!-- Filters Panel -->
+            <div class="glass-card filters-panel">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>Filters</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline" id="clear-all-filters" data-tooltip="Clear all active filters">Clear All</button>
+                </div>
+                <div class="card-content">
+                    <!-- Basic Filters -->
+                    <div class="filter-section basic-filters">
+                        <div class="filter-section-header" id="basic-filters-header">
+                            <div class="filter-section-title">
+                                <span>🔍</span>
+                                <span>Basic Filters</span>
+                            </div>
+                            <span class="toggle-icon">▼</span>
+                        </div>
+                        <div class="filter-section-content" id="basic-filters-content">
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Market Cap</span>
+                                    <span class="info-icon" data-tooltip="Filter stocks by market capitalization size - the total value of all outstanding shares">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="market-cap" data-value="large" data-tooltip="Companies with market cap > $10 billion">Large Cap ($10B+)</div>
+                                    <div class="filter-chip" data-filter="market-cap" data-value="mid" data-tooltip="Companies with market cap between $2-10 billion">Mid Cap ($2-10B)</div>
+                                    <div class="filter-chip" data-filter="market-cap" data-value="small" data-tooltip="Companies with market cap between $300M-2B">Small Cap ($300M-2B)</div>
+                                    <div class="filter-chip" data-filter="market-cap" data-value="micro" data-tooltip="Companies with market cap < $300 million">Micro Cap (<$300M)</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Volume</span>
+                                    <span class="info-icon" data-tooltip="Filter stocks by average daily trading volume - the number of shares traded daily">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="volume" data-value="high" data-tooltip="Stocks with average daily volume > 1 million shares">High (>1M shares)</div>
+                                    <div class="filter-chip" data-filter="volume" data-value="medium" data-tooltip="Stocks with average daily volume between 100K-1M shares">Medium (100K-1M)</div>
+                                    <div class="filter-chip" data-filter="volume" data-value="low" data-tooltip="Stocks with average daily volume < 100K shares">Low (<100K shares)</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Debt</span>
+                                    <span class="info-icon" data-tooltip="Filter stocks by debt level relative to company size and earnings">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="debt" data-value="low" data-tooltip="Companies with debt-to-equity ratio < 0.3">Low (D/E < 0.3)</div>
+                                    <div class="filter-chip" data-filter="debt" data-value="medium" data-tooltip="Companies with debt-to-equity ratio between 0.3-0.6">Medium (D/E 0.3-0.6)</div>
+                                    <div class="filter-chip" data-filter="debt" data-value="high" data-tooltip="Companies with debt-to-equity ratio > 0.6">High (D/E > 0.6)</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Valuation</span>
+                                    <span class="info-icon" data-tooltip="Filter stocks by price-to-earnings (P/E) ratio - how expensive a stock is relative to its earnings">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="valuation" data-value="value" data-tooltip="Companies with P/E ratio < 15">Value (P/E < 15)</div>
+                                    <div class="filter-chip" data-filter="valuation" data-value="growth" data-tooltip="Companies with P/E ratio > 25">Growth (P/E > 25)</div>
+                                    <div class="filter-chip" data-filter="valuation" data-value="blend" data-tooltip="Companies with P/E ratio between 15-25">Blend (P/E 15-25)</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>ROTCE</span>
+                                    <span class="info-icon" data-tooltip="Return on Tangible Common Equity - measures how efficiently a company uses its tangible assets to generate profits">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="rotce" data-value="excellent" data-tooltip="Companies with excellent ROTCE above 20%">Excellent (>20%)</div>
+                                    <div class="filter-chip" data-filter="rotce" data-value="good" data-tooltip="Companies with good ROTCE between 15-20%">Good (15-20%)</div>
+                                    <div class="filter-chip" data-filter="rotce" data-value="average" data-tooltip="Companies with average ROTCE between 10-15%">Average (10-15%)</div>
+                                    <div class="filter-chip" data-filter="rotce" data-value="poor" data-tooltip="Companies with poor ROTCE below 10%">Poor (<10%)</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Numeric Gates -->
+                    <div class="filter-section numeric-gates">
+                        <div class="filter-section-header" id="numeric-gates-header">
+                            <div class="filter-section-title">
+                                <span>🧮</span>
+                                <span>Numeric Gates</span>
+                            </div>
+                            <span class="toggle-icon">▼</span>
+                        </div>
+                        <div class="filter-section-content" id="numeric-gates-content">
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Debt/EBITDA</span>
+                                    <span class="info-icon" data-tooltip="Debt to EBITDA ratio - measures a company's ability to pay off its debt using earnings before interest, taxes, depreciation, and amortization">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="debt-ebitda" data-value="1" data-tooltip="Companies with Debt/EBITDA ratio less than or equal to 1">≤ 1×</div>
+                                    <div class="filter-chip" data-filter="debt-ebitda" data-value="0.5" data-tooltip="Companies with Debt/EBITDA ratio less than or equal to 0.5">≤ 0.5×</div>
+                                    <div class="filter-chip" data-filter="debt-ebitda" data-value="0.25" data-tooltip="Companies with Debt/EBITDA ratio less than or equal to 0.25">≤ 0.25×</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>FCF/NI Ratio</span>
+                                    <span class="info-icon" data-tooltip="Free Cash Flow to Net Income ratio - measures the quality of earnings and how well net income translates to actual cash generation">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="fcf-ni" data-value="0.8" data-tooltip="Companies with FCF/NI ratio greater than or equal to 0.8">≥ 0.8</div>
+                                    <div class="filter-chip" data-filter="fcf-ni" data-value="1.0" data-tooltip="Companies with FCF/NI ratio greater than or equal to 1.0">≥ 1.0</div>
+                                    <div class="filter-chip" data-filter="fcf-ni" data-value="1.2" data-tooltip="Companies with FCF/NI ratio greater than or equal to 1.2">≥ 1.2</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Share Count CAGR</span>
+                                    <span class="info-icon" data-tooltip="Share Count Compound Annual Growth Rate - measures the rate at which a company is diluting or reducing its outstanding shares">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="share-cagr" data-value="0" data-tooltip="Companies with stable or decreasing share count">≤ 0%</div>
+                                    <div class="filter-chip" data-filter="share-cagr" data-value="-2" data-tooltip="Companies reducing share count by at least 2% annually">≤ -2%</div>
+                                    <div class="filter-chip" data-filter="share-cagr" data-value="-5" data-tooltip="Companies reducing share count by at least 5% annually">≤ -5%</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>EV/EBIT</span>
+                                    <span class="info-icon" data-tooltip="Enterprise Value to Earnings Before Interest and Taxes - a valuation metric that compares a company's total value to its operational earnings">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="ev-ebit" data-value="10" data-tooltip="Companies with EV/EBIT ratio less than or equal to 10">≤ 10×</div>
+                                    <div class="filter-chip" data-filter="ev-ebit" data-value="8" data-tooltip="Companies with EV/EBIT ratio less than or equal to 8">≤ 8×</div>
+                                    <div class="filter-chip" data-filter="ev-ebit" data-value="6" data-tooltip="Companies with EV/EBIT ratio less than or equal to 6">≤ 6×</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Deep Value</span>
+                                    <span class="info-icon" data-tooltip="Price to Net Current Asset Value - identifies stocks trading below their liquidation value, a classic Benjamin Graham deep value metric">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="deep-value" data-value="0.66" data-tooltip="Companies trading at less than 2/3 of their net current asset value">P/NCAV ≤ 0.66</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Qualitative Filters -->
+                    <div class="filter-section qualitative-filters">
+                        <div class="filter-section-header" id="qualitative-filters-header">
+                            <div class="filter-section-title">
+                                <span>🔬</span>
+                                <span>Qualitative Filters</span>
+                            </div>
+                            <span class="toggle-icon">▼</span>
+                        </div>
+                        <div class="filter-section-content" id="qualitative-filters-content">
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Moat Keywords</span>
+                                    <span class="info-icon" data-tooltip="Scans company reports for keywords indicating competitive advantages or economic moats">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="moat-keywords" data-value="3" data-tooltip="Companies with at least 3 moat-related keywords in their reports">≥ 3 hits</div>
+                                    <div class="filter-chip" data-filter="moat-keywords" data-value="5" data-tooltip="Companies with at least 5 moat-related keywords in their reports">≥ 5 hits</div>
+                                    <div class="filter-chip" data-filter="moat-keywords" data-value="10" data-tooltip="Companies with at least 10 moat-related keywords in their reports">≥ 10 hits</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Insider Ownership</span>
+                                    <span class="info-icon" data-tooltip="Percentage of shares owned by company insiders like executives and directors - indicates alignment with shareholders">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="insider-ownership" data-value="8" data-tooltip="Companies with at least 8% insider ownership">≥ 8%</div>
+                                    <div class="filter-chip" data-filter="insider-ownership" data-value="15" data-tooltip="Companies with at least 15% insider ownership">≥ 15%</div>
+                                    <div class="filter-chip" data-filter="insider-ownership" data-value="25" data-tooltip="Companies with at least 25% insider ownership">≥ 25%</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Net Insider Buys</span>
+                                    <span class="info-icon" data-tooltip="Net number of insider purchase transactions over the past 12 months - indicates insider confidence">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="insider-buys" data-value="1" data-tooltip="Companies with any net insider buying over the past 12 months">Any</div>
+                                    <div class="filter-chip" data-filter="insider-buys" data-value="3" data-tooltip="Companies with at least 3 net insider buys over the past 12 months">≥ 3</div>
+                                    <div class="filter-chip" data-filter="insider-buys" data-value="5" data-tooltip="Companies with at least 5 net insider buys over the past 12 months">≥ 5</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Gross Margin Trend</span>
+                                    <span class="info-icon" data-tooltip="Direction of gross profit margin over time - indicates pricing power and competitive position">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="margin-trend" data-value="improving" data-tooltip="Companies with improving gross margins over the past 3 years">Improving</div>
+                                    <div class="filter-chip" data-filter="margin-trend" data-value="stable" data-tooltip="Companies with stable gross margins over the past 3 years">Stable</div>
+                                    <div class="filter-chip" data-filter="margin-trend" data-value="any" data-tooltip="Include all companies regardless of gross margin trend">Any</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Incremental ROIC</span>
+                                    <span class="info-icon" data-tooltip="Return on Incremental Invested Capital - measures how efficiently a company uses new capital investments">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="inc-roic" data-value="15" data-tooltip="Companies with incremental ROIC of at least 15%">≥ 15%</div>
+                                    <div class="filter-chip" data-filter="inc-roic" data-value="20" data-tooltip="Companies with incremental ROIC of at least 20%">≥ 20%</div>
+                                    <div class="filter-chip" data-filter="inc-roic" data-value="25" data-tooltip="Companies with incremental ROIC of at least 25%">≥ 25%</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Exclude Red Flags</span>
+                                    <span class="info-icon" data-tooltip="Exclude companies with potential warning signs that may indicate problems">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip" data-filter="exclude-flags" data-value="audit" data-tooltip="Exclude companies that have changed auditors in the past 2 years">Audit Changes</div>
+                                    <div class="filter-chip" data-filter="exclude-flags" data-value="management" data-tooltip="Exclude companies with significant executive departures in the past year">Management Exits</div>
+                                    <div class="filter-chip" data-filter="exclude-flags" data-value="all" data-tooltip="Exclude companies with any red flags">All Red Flags</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Ranking System -->
+                    <div class="filter-section ranking-system">
+                        <div class="filter-section-header" id="ranking-system-header">
+                            <div class="filter-section-title">
+                                <span>🏅</span>
+                                <span>Ranking System</span>
+                            </div>
+                            <span class="toggle-icon">▼</span>
+                        </div>
+                        <div class="filter-section-content" id="ranking-system-content">
+                            <div class="ranking-cards">
+                                <div class="ranking-card" data-ranking="owner-earnings" data-tooltip="Rank stocks by Owner-Earnings Yield (adjusted cash flow relative to enterprise value)">
+                                    <div class="ranking-icon">💰</div>
+                                    <div class="ranking-title">Owner-Earnings Yield</div>
+                                </div>
+                                <div class="ranking-card" data-ranking="rotce" data-tooltip="Rank stocks by Return on Tangible Common Equity (profitability metric)">
+                                    <div class="ranking-icon">📈</div>
+                                    <div class="ranking-title">ROTCE</div>
+                                </div>
+                                <div class="ranking-card" data-ranking="combined" data-tooltip="Rank stocks using a combined score of multiple metrics weighted for balanced performance">
+                                    <div class="ranking-icon">⚖️</div>
+                                    <div class="ranking-title">Combined Score</div>
+                                </div>
+                            </div>
+                            
+                            <div class="toggle-switch">
+                                <div class="toggle-label">Track Rank Momentum</div>
+                                <div class="toggle" id="rank-momentum-toggle" data-tooltip="Track changes in ranking position over time to identify improving stocks"></div>
+                            </div>
+                            
+                            <div class="export-buttons">
+                                <button class="export-button" id="export-csv" data-tooltip="Export filtered results to CSV format for spreadsheet analysis">
+                                    <span>📄</span>
+                                    <span>CSV</span>
+                                </button>
+                                <button class="export-button" id="export-json" data-tooltip="Export filtered results to JSON format for programmatic use">
+                                    <span>📊</span>
+                                    <span>JSON</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stats Panel -->
+            <div class="glass-card stats-panel">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>Key Metrics</span>
+                    </div>
+                    <button class="btn btn-sm btn-outline" id="customize-metrics" data-tooltip="Customize which metrics are displayed in this panel">Customize</button>
+                </div>
+                <div class="card-content">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value" id="total-stocks">42</div>
+                            <div class="stat-label">Stocks Passing Filters</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avg-debt-ebitda">0.38×</div>
+                            <div class="stat-label">Avg. Debt/EBITDA</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avg-ev-ebit">8.4×</div>
+                            <div class="stat-label">Avg. EV/EBIT</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avg-fcf-ni">1.06</div>
+                            <div class="stat-label">Avg. FCF/NI</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="avg-rotce">35.5%</div>
+                            <div class="stat-label">Avg. ROTCE</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="glass-card main-content">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>Stocks</span>
+                    </div>
+                    <div class="view-controls">
+                        <button class="view-button" id="card-view-button" data-tooltip="View stocks as cards with key metrics">
+                            <span>🃏</span>
+                            <span>Card View</span>
+                        </button>
+                        <button class="view-button active" id="table-view-button" data-tooltip="View stocks as a detailed table">
+                            <span>📋</span>
+                            <span>Table View</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="search-bar">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="search-input" id="search-input" placeholder="Search by symbol, name, or sector..." data-tooltip="Enter stock symbol, company name, or sector to filter results">
+                    </div>
+                    
+                    <!-- Applied Filters -->
+                    <div class="applied-filters" id="applied-filters">
+                        <!-- Applied filters will be added here dynamically -->
+                    </div>
+                    
+                    <!-- Stock Cards View (hidden by default) -->
+                    <div class="stock-cards" id="stock-cards" style="display: none;">
+                        <!-- Stock cards will be added here dynamically -->
+                    </div>
+                    
+                    <!-- Stock Table View -->
+                    <div class="stock-table-container">
+                        <table class="stock-table" id="stock-table">
+                            <thead>
+                                <tr>
+                                    <th>Symbol</th>
+                                    <th>Company</th>
+                                    <th>Price</th>
+                                    <th>Debt/EBITDA</th>
+                                    <th>FCF/NI</th>
+                                    <th>EV/EBIT</th>
+                                    <th>ROTCE</th>
+                                    <th>Score</th>
+                                </tr>
+                            </thead>
+                            <tbody id="stock-table-body">
+                                <!-- Stock rows will be added here dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                    
+                    <div class="pagination" id="pagination">
+                        <!-- Pagination controls will be added here dynamically -->
+                    </div>
+                </div>
             </div>
         </div>
-    </header>
-    
-    <div class="stats-container">
-        <div class="stat-item">
-            <div id="total-stocks" class="stat-value">0</div>
-            <div class="stat-label">Stocks</div>
-        </div>
-        <div class="stat-item">
-            <div id="nyse-stocks" class="stat-value">0</div>
-            <div class="stat-label">NYSE</div>
-        </div>
-        <div class="stat-item">
-            <div id="nasdaq-stocks" class="stat-value">0</div>
-            <div class="stat-label">NASDAQ</div>
-        </div>
-        <div class="last-updated">Last Updated: <span id="last-updated">Never</span></div>
     </div>
     
-    <main>
-        <section class="filters-section">
-            <div id="filters-toggle" class="filters-header">
-                <h2 class="filters-title">Filters</h2>
-                <div class="filters-toggle">▼</div>
-            </div>
-            <div id="filters-content" class="filters-content">
-                <div class="filter-buttons">
-                    <button class="preset-button value" data-preset="value">Value Stocks</button>
-                    <button class="preset-button growth" data-preset="growth">Growth Stocks</button>
-                    <button class="preset-button dividend" data-preset="dividend">Dividend Stocks</button>
-                    <button class="preset-button quality" data-preset="quality">Quality Stocks</button>
-                </div>
-                
-                <div class="filter-group">
-                    <div class="filter-group-title">
-                        Market Cap
-                        <span class="info-icon" title="Total market value of a company's outstanding shares">ⓘ</span>
-                    </div>
-                    <div class="filter-buttons">
-                        <button class="filter-button" data-filter="market_cap" data-value="large">
-                            <span class="icon">📊</span> Large ($10B+)
-                        </button>
-                        <button class="filter-button" data-filter="market_cap" data-value="mid">
-                            <span class="icon">📊</span> Mid ($2-10B)
-                        </button>
-                        <button class="filter-button" data-filter="market_cap" data-value="small">
-                            <span class="icon">📊</span> Small ($300M-2B)
-                        </button>
-                        <button class="filter-button" data-filter="market_cap" data-value="micro">
-                            <span class="icon">📊</span> Micro (<$300M)
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="filter-group">
-                    <div class="filter-group-title">
-                        Volume
-                        <span class="info-icon" title="Average daily trading volume in dollars">ⓘ</span>
-                    </div>
-                    <div class="filter-buttons">
-                        <button class="filter-button" data-filter="volume" data-value="high">
-                            <span class="icon">📈</span> High (>$5M)
-                        </button>
-                        <button class="filter-button" data-filter="volume" data-value="medium">
-                            <span class="icon">📈</span> Medium ($1-5M)
-                        </button>
-                        <button class="filter-button" data-filter="volume" data-value="low">
-                            <span class="icon">📈</span> Low (<$1M)
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="filter-group">
-                    <div class="filter-group-title">
-                        Debt
-                        <span class="info-icon" title="Debt to EBITDA ratio (lower is better)">ⓘ</span>
-                    </div>
-                    <div class="filter-buttons">
-                        <button class="filter-button" data-filter="debt" data-value="low">
-                            <span class="icon">💰</span> Low (<0.5x)
-                        </button>
-                        <button class="filter-button" data-filter="debt" data-value="medium">
-                            <span class="icon">💰</span> Medium (0.5-1.5x)
-                        </button>
-                        <button class="filter-button" data-filter="debt" data-value="high">
-                            <span class="icon">💰</span> High (>1.5x)
-                        </button>
-                    </div>
-                </div>
-                
-                <div class="filter-group">
-                    <div class="filter-group-title">
-                        Valuation
-                        <span class="info-icon" title="Price to Earnings (P/E) ratio">ⓘ</span>
-                    </div>
-                    <div class="filter-buttons">
-                        <button class="filter-button" data-filter="valuation" data-value="undervalued">
-                            <span class="icon">💎</span> Undervalued (P/E <15)
-                        </button>
-                        <button class="filter-button" data-filter="valuation" data-value="fair">
-                            <span class="icon">💎</span> Fair Value (P/E 15-25)
-                        </button>
-                        <button class="filter-button" data-filter="valuation" data-value="overvalued">
-                            <span class="icon">💎</span> Overvalued (P/E >25)
-                        </button>
-                    </div>
-                </div>
-                
-                <!-- ROTCE Filter Section -->
-                <div class="filter-group">
-                    <div class="filter-group-title">
-                        ROTCE
-                        <span class="info-icon" title="Return on Tangible Common Equity (higher is better)">ⓘ</span>
-                    </div>
-                    <div class="filter-buttons">
-                        <button class="filter-button" data-filter="rotce" data-value="excellent">
-                            <span class="icon">🌟</span> Excellent (>20%)
-                        </button>
-                        <button class="filter-button" data-filter="rotce" data-value="good">
-                            <span class="icon">🌟</span> Good (15-20%)
-                        </button>
-                        <button class="filter-button" data-filter="rotce" data-value="average">
-                            <span class="icon">🌟</span> Average (10-15%)
-                        </button>
-                        <button class="filter-button" data-filter="rotce" data-value="below_average">
-                            <span class="icon">🌟</span> Below Average (5-10%)
-                        </button>
-                        <button class="filter-button" data-filter="rotce" data-value="poor">
-                            <span class="icon">🌟</span> Poor (<5%)
-                        </button>
-                    </div>
-                </div>
-            </div>
-        </section>
-        
-        <div class="view-controls">
-            <button id="card-view-button" class="view-button active">
-                <span class="icon">📇</span> Card View
-            </button>
-            <button id="table-view-button" class="view-button">
-                <span class="icon">📋</span> Table View
-            </button>
-        </div>
-        
-        <div class="search-container">
-            <input type="text" id="search-input" class="search-input" placeholder="Search by symbol or name...">
-        </div>
-        
-        <section class="stocks-section">
-            <h2 class="section-title">Stocks</h2>
-            <div id="stock-cards" class="stock-cards-container"></div>
-            <div id="stock-table-container" class="stock-table-container"></div>
-        </section>
-        
-        <div id="pagination-container" class="pagination-container"></div>
-    </main>
-    
-    <div id="tooltip"></div>
-    
-    <div class="loading-progress-bar">
-        <div class="progress-inner"></div>
+    <!-- Mobile Filter Button (visible only on mobile) -->
+    <div class="filter-button" id="mobile-filter-button" data-tooltip="Open filter options">
+        <span>🔍</span>
+        <span>Filters (<span id="active-filter-count">0</span>)</span>
     </div>
-    <div class="loading-progress-text">Loading...</div>
     
-    <script src="tooltip.js"></script>
-    <script src="pagination.js"></script>
-    <script src="paginatedApp.js"></script>
+    <!-- Bottom Sheet (for mobile) -->
+    <div class="bottom-sheet" id="filter-bottom-sheet">
+        <div class="sheet-handle"></div>
+        <div class="sheet-header">
+            <div class="sheet-title">Filters</div>
+            <div class="sheet-close" id="close-bottom-sheet">×</div>
+        </div>
+        
+        <!-- Filter Tabs -->
+        <div class="filter-tabs" id="filter-tabs">
+            <div class="filter-tab active" data-tab="basic" data-tooltip="Basic stock filtering options">Basic</div>
+            <div class="filter-tab" data-tab="numeric" data-tooltip="Advanced numerical filtering criteria">Numeric Gates</div>
+            <div class="filter-tab" data-tab="qualitative" data-tooltip="Qualitative analysis filters">Qualitative</div>
+            <div class="filter-tab" data-tab="ranking" data-tooltip="Stock ranking and scoring options">Ranking</div>
+        </div>
+        
+        <div class="sheet-content">
+            <!-- Filter content will be dynamically loaded here based on selected tab -->
+            <div class="filter-content active" id="mobile-basic-filters">
+                <!-- Basic filters content will be cloned here -->
+            </div>
+            
+            <div class="filter-content" id="mobile-numeric-gates">
+                <!-- Numeric gates content will be cloned here -->
+            </div>
+            
+            <div class="filter-content" id="mobile-qualitative-filters">
+                <!-- Qualitative filters content will be cloned here -->
+            </div>
+            
+            <div class="filter-content" id="mobile-ranking-system">
+                <!-- Ranking system content will be cloned here -->
+            </div>
+        </div>
+        
+        <div class="sheet-footer">
+            <button class="sheet-button secondary" id="reset-filters" data-tooltip="Clear all selected filters">Reset</button>
+            <button class="sheet-button primary" id="apply-filters" data-tooltip="Apply selected filters to stock list">Apply Filters</button>
+        </div>
+    </div>
+    
+    <div class="overlay" id="bottom-sheet-overlay"></div>
+    <div class="tooltip" id="tooltip"></div>
+    
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles-card-redesign-fix.css">
+    
+    <!-- Scripts -->
+    <script src="app.js"></script>
+    <script src="card-view-redesign-fix.js"></script>
+    <script src="presets.js"></script>
 </body>
 </html>

@@ -1,0 +1,1067 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Stock Screener - Modern Desktop Wireframe</title>
+    <style>
+        :root {
+            --primary: #1E88E5;
+            --secondary: #7C4DFF;
+            --success: #4CAF50;
+            --warning: #FF9800;
+            --danger: #F44336;
+            --neutral-50: #F5F7FA;
+            --neutral-100: #E4E7EB;
+            --neutral-200: #CBD2D9;
+            --neutral-300: #9AA5B1;
+            --neutral-400: #7B8794;
+            --neutral-500: #616E7C;
+            --neutral-600: #52606D;
+            --neutral-700: #3E4C59;
+            --neutral-800: #323F4B;
+            --neutral-900: #1F2933;
+            --radius-sm: 6px;
+            --radius-md: 12px;
+            --radius-lg: 16px;
+            --shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.08);
+            --shadow-md: 0 4px 16px rgba(0, 0, 0, 0.12);
+            --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.16);
+        }
+        
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+        
+        body {
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background-color: var(--neutral-50);
+            color: var(--neutral-800);
+            line-height: 1.5;
+        }
+        
+        .app-container {
+            max-width: 1440px;
+            margin: 0 auto;
+            padding: 24px;
+        }
+        
+        /* Header Styles */
+        .app-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 24px;
+        }
+        
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 24px;
+            font-weight: 700;
+            color: var(--primary);
+        }
+        
+        .header-actions {
+            display: flex;
+            gap: 16px;
+            align-items: center;
+        }
+        
+        .theme-toggle {
+            width: 48px;
+            height: 24px;
+            background-color: var(--neutral-200);
+            border-radius: 12px;
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .theme-toggle::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            background-color: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.2s ease;
+        }
+        
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+        }
+        
+        .avatar {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            background-color: var(--primary);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            color: white;
+            font-weight: 600;
+        }
+        
+        /* Bento Grid Layout */
+        .bento-grid {
+            display: grid;
+            grid-template-columns: 300px 1fr;
+            grid-template-rows: auto 1fr;
+            gap: 24px;
+            height: calc(100vh - 100px);
+        }
+        
+        /* Glass Card Styles */
+        .glass-card {
+            background-color: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(10px);
+            border-radius: var(--radius-md);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            box-shadow: var(--shadow-md);
+            overflow: hidden;
+        }
+        
+        .card-header {
+            padding: 16px;
+            border-bottom: 1px solid var(--neutral-100);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        
+        .card-title {
+            font-weight: 600;
+            font-size: 16px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .card-content {
+            padding: 16px;
+            overflow-y: auto;
+        }
+        
+        /* Filters Panel */
+        .filters-panel {
+            grid-column: 1;
+            grid-row: 1 / span 2;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .filter-section {
+            margin-bottom: 16px;
+        }
+        
+        .filter-section-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 16px;
+            background-color: rgba(30, 136, 229, 0.1);
+            border-radius: var(--radius-sm);
+            margin-bottom: 12px;
+            cursor: pointer;
+        }
+        
+        .filter-section-title {
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .filter-section-content {
+            padding: 0 8px;
+        }
+        
+        .filter-group {
+            margin-bottom: 16px;
+        }
+        
+        .filter-group-title {
+            font-size: 14px;
+            font-weight: 500;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+        
+        .info-icon {
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background-color: var(--neutral-200);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            cursor: help;
+        }
+        
+        .filter-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .filter-chip {
+            padding: 6px 12px;
+            background-color: rgba(30, 136, 229, 0.1);
+            border: 1px solid rgba(30, 136, 229, 0.2);
+            border-radius: 16px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .filter-chip:hover {
+            background-color: rgba(30, 136, 229, 0.2);
+        }
+        
+        .filter-chip.active {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        
+        /* Stats Panel */
+        .stats-panel {
+            grid-column: 2;
+            grid-row: 1;
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 16px;
+        }
+        
+        .stat-card {
+            background-color: white;
+            border-radius: var(--radius-sm);
+            padding: 16px;
+            text-align: center;
+            box-shadow: var(--shadow-sm);
+        }
+        
+        .stat-value {
+            font-size: 24px;
+            font-weight: 700;
+            margin-bottom: 4px;
+            font-family: 'Roboto Mono', monospace;
+        }
+        
+        .stat-label {
+            font-size: 14px;
+            color: var(--neutral-500);
+        }
+        
+        /* Main Content */
+        .main-content {
+            grid-column: 2;
+            grid-row: 2;
+            display: flex;
+            flex-direction: column;
+            height: 100%;
+        }
+        
+        .view-controls {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .view-button {
+            padding: 8px 16px;
+            background-color: white;
+            border: 1px solid var(--neutral-200);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .view-button:hover {
+            background-color: var(--neutral-100);
+        }
+        
+        .view-button.active {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        
+        .search-bar {
+            margin-bottom: 16px;
+            position: relative;
+        }
+        
+        .search-input {
+            width: 100%;
+            padding: 12px 16px 12px 40px;
+            border: 1px solid var(--neutral-200);
+            border-radius: var(--radius-sm);
+            font-size: 16px;
+        }
+        
+        .search-icon {
+            position: absolute;
+            left: 12px;
+            top: 50%;
+            transform: translateY(-50%);
+            color: var(--neutral-400);
+        }
+        
+        /* Stock Cards */
+        .stock-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 16px;
+            overflow-y: auto;
+            padding-right: 8px;
+        }
+        
+        .stock-card {
+            background-color: white;
+            border-radius: var(--radius-md);
+            padding: 16px;
+            box-shadow: var(--shadow-sm);
+            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            cursor: pointer;
+        }
+        
+        .stock-card:hover {
+            transform: translateY(-4px);
+            box-shadow: var(--shadow-md);
+        }
+        
+        .stock-header {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .stock-symbol {
+            font-weight: 700;
+            font-size: 18px;
+        }
+        
+        .stock-price {
+            font-weight: 700;
+            font-family: 'Roboto Mono', monospace;
+        }
+        
+        .stock-name {
+            font-size: 14px;
+            color: var(--neutral-600);
+            margin-bottom: 12px;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        
+        .stock-metrics {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+        
+        .metric {
+            display: flex;
+            flex-direction: column;
+        }
+        
+        .metric-label {
+            font-size: 12px;
+            color: var(--neutral-500);
+        }
+        
+        .metric-value {
+            font-weight: 600;
+            font-family: 'Roboto Mono', monospace;
+        }
+        
+        /* Stock Table */
+        .stock-table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+        
+        .stock-table th {
+            text-align: left;
+            padding: 12px 16px;
+            background-color: var(--neutral-100);
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        
+        .stock-table td {
+            padding: 12px 16px;
+            border-bottom: 1px solid var(--neutral-100);
+        }
+        
+        .stock-table tr:hover {
+            background-color: rgba(30, 136, 229, 0.05);
+        }
+        
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-top: 24px;
+        }
+        
+        .page-button {
+            width: 36px;
+            height: 36px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: var(--radius-sm);
+            background-color: white;
+            border: 1px solid var(--neutral-200);
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .page-button:hover {
+            background-color: var(--neutral-100);
+        }
+        
+        .page-button.active {
+            background-color: var(--primary);
+            color: white;
+            border-color: var(--primary);
+        }
+        
+        /* Floating Action Button */
+        .fab {
+            position: fixed;
+            bottom: 24px;
+            right: 24px;
+            width: 56px;
+            height: 56px;
+            border-radius: 28px;
+            background-color: var(--primary);
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            box-shadow: var(--shadow-lg);
+            cursor: pointer;
+            transition: transform 0.2s ease;
+        }
+        
+        .fab:hover {
+            transform: scale(1.1);
+        }
+        
+        /* Tooltip */
+        .tooltip {
+            position: absolute;
+            background-color: var(--neutral-800);
+            color: white;
+            padding: 8px 12px;
+            border-radius: var(--radius-sm);
+            font-size: 14px;
+            z-index: 100;
+            max-width: 250px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s ease;
+        }
+        
+        /* Numeric Gates Section */
+        .numeric-gates .filter-section-header {
+            background-color: rgba(124, 77, 255, 0.1);
+        }
+        
+        .numeric-gates .filter-chip {
+            background-color: rgba(124, 77, 255, 0.1);
+            border: 1px solid rgba(124, 77, 255, 0.2);
+        }
+        
+        .numeric-gates .filter-chip:hover {
+            background-color: rgba(124, 77, 255, 0.2);
+        }
+        
+        .numeric-gates .filter-chip.active {
+            background-color: var(--secondary);
+            color: white;
+            border-color: var(--secondary);
+        }
+        
+        /* Qualitative Filters Section */
+        .qualitative-filters .filter-section-header {
+            background-color: rgba(76, 175, 80, 0.1);
+        }
+        
+        .qualitative-filters .filter-chip {
+            background-color: rgba(76, 175, 80, 0.1);
+            border: 1px solid rgba(76, 175, 80, 0.2);
+        }
+        
+        .qualitative-filters .filter-chip:hover {
+            background-color: rgba(76, 175, 80, 0.2);
+        }
+        
+        .qualitative-filters .filter-chip.active {
+            background-color: var(--success);
+            color: white;
+            border-color: var(--success);
+        }
+        
+        /* Ranking System Section */
+        .ranking-system .filter-section-header {
+            background-color: rgba(255, 152, 0, 0.1);
+        }
+        
+        .ranking-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 12px;
+            margin-bottom: 16px;
+        }
+        
+        .ranking-card {
+            padding: 12px;
+            border-radius: var(--radius-sm);
+            background-color: rgba(255, 152, 0, 0.1);
+            border: 1px solid rgba(255, 152, 0, 0.2);
+            text-align: center;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        
+        .ranking-card:hover {
+            background-color: rgba(255, 152, 0, 0.2);
+        }
+        
+        .ranking-card.active {
+            background-color: var(--warning);
+            color: white;
+            border-color: var(--warning);
+        }
+        
+        .ranking-icon {
+            font-size: 24px;
+            margin-bottom: 8px;
+        }
+        
+        .ranking-title {
+            font-weight: 600;
+            font-size: 14px;
+        }
+        
+        .toggle-switch {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            margin-bottom: 12px;
+        }
+        
+        .toggle-label {
+            font-size: 14px;
+        }
+        
+        .toggle {
+            width: 40px;
+            height: 20px;
+            background-color: var(--neutral-200);
+            border-radius: 10px;
+            position: relative;
+            cursor: pointer;
+        }
+        
+        .toggle::after {
+            content: '';
+            position: absolute;
+            width: 16px;
+            height: 16px;
+            background-color: white;
+            border-radius: 50%;
+            top: 2px;
+            left: 2px;
+            transition: transform 0.2s ease;
+        }
+        
+        .toggle.active {
+            background-color: var(--warning);
+        }
+        
+        .toggle.active::after {
+            transform: translateX(20px);
+        }
+        
+        .export-buttons {
+            display: flex;
+            gap: 12px;
+        }
+        
+        .export-button {
+            padding: 8px 16px;
+            background-color: white;
+            border: 1px solid var(--neutral-200);
+            border-radius: var(--radius-sm);
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            flex: 1;
+            justify-content: center;
+        }
+        
+        .export-button:hover {
+            background-color: var(--neutral-100);
+        }
+    </style>
+</head>
+<body>
+    <div class="app-container">
+        <header class="app-header">
+            <div class="logo">
+                <span>📊</span>
+                <span>Stock Screener</span>
+            </div>
+            <div class="header-actions">
+                <div class="theme-toggle"></div>
+                <div class="user-profile">
+                    <div class="avatar">U</div>
+                    <span>User</span>
+                </div>
+            </div>
+        </header>
+        
+        <div class="bento-grid">
+            <!-- Filters Panel -->
+            <div class="glass-card filters-panel">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>Filters</span>
+                    </div>
+                    <div>
+                        <button>Clear All</button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <!-- Basic Filters -->
+                    <div class="filter-section">
+                        <div class="filter-section-header">
+                            <div class="filter-section-title">
+                                <span>🔍</span>
+                                <span>Basic Filters</span>
+                            </div>
+                            <span>▼</span>
+                        </div>
+                        <div class="filter-section-content">
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Market Cap</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">Large</div>
+                                    <div class="filter-chip">Mid</div>
+                                    <div class="filter-chip">Small</div>
+                                    <div class="filter-chip">Micro</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Volume</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">High</div>
+                                    <div class="filter-chip">Medium</div>
+                                    <div class="filter-chip">Low</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Debt</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">Low</div>
+                                    <div class="filter-chip">Medium</div>
+                                    <div class="filter-chip">High</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Numeric Gates -->
+                    <div class="filter-section numeric-gates">
+                        <div class="filter-section-header">
+                            <div class="filter-section-title">
+                                <span>🧮</span>
+                                <span>Numeric Gates</span>
+                            </div>
+                            <span>▼</span>
+                        </div>
+                        <div class="filter-section-content">
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Debt/EBITDA</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">≤ 1×</div>
+                                    <div class="filter-chip">≤ 0.5×</div>
+                                    <div class="filter-chip">≤ 0.25×</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>FCF/NI Ratio</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">≥ 0.8</div>
+                                    <div class="filter-chip">≥ 1.0</div>
+                                    <div class="filter-chip">≥ 1.2</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Share Count CAGR</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">≤ 0%</div>
+                                    <div class="filter-chip">≤ -2%</div>
+                                    <div class="filter-chip">≤ -5%</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>EV/EBIT</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">≤ 10×</div>
+                                    <div class="filter-chip">≤ 8×</div>
+                                    <div class="filter-chip">≤ 6×</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Qualitative Filters -->
+                    <div class="filter-section qualitative-filters">
+                        <div class="filter-section-header">
+                            <div class="filter-section-title">
+                                <span>🔬</span>
+                                <span>Qualitative Filters</span>
+                            </div>
+                            <span>▼</span>
+                        </div>
+                        <div class="filter-section-content">
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Moat Keywords</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip">≥ 3 hits</div>
+                                    <div class="filter-chip">≥ 5 hits</div>
+                                    <div class="filter-chip">≥ 10 hits</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Insider Ownership</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip active">≥ 8%</div>
+                                    <div class="filter-chip">≥ 15%</div>
+                                    <div class="filter-chip">≥ 25%</div>
+                                </div>
+                            </div>
+                            
+                            <div class="filter-group">
+                                <div class="filter-group-title">
+                                    <span>Net Insider Buys</span>
+                                    <span class="info-icon">i</span>
+                                </div>
+                                <div class="filter-chips">
+                                    <div class="filter-chip">Any</div>
+                                    <div class="filter-chip">≥ 3</div>
+                                    <div class="filter-chip">≥ 5</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Ranking System -->
+                    <div class="filter-section ranking-system">
+                        <div class="filter-section-header">
+                            <div class="filter-section-title">
+                                <span>🏅</span>
+                                <span>Ranking System</span>
+                            </div>
+                            <span>▼</span>
+                        </div>
+                        <div class="filter-section-content">
+                            <div class="ranking-cards">
+                                <div class="ranking-card active">
+                                    <div class="ranking-icon">💰</div>
+                                    <div class="ranking-title">Owner-Earnings Yield</div>
+                                </div>
+                                <div class="ranking-card">
+                                    <div class="ranking-icon">📈</div>
+                                    <div class="ranking-title">ROTCE</div>
+                                </div>
+                                <div class="ranking-card">
+                                    <div class="ranking-icon">⚖️</div>
+                                    <div class="ranking-title">Combined Score</div>
+                                </div>
+                            </div>
+                            
+                            <div class="toggle-switch">
+                                <div class="toggle-label">Track Rank Momentum</div>
+                                <div class="toggle active"></div>
+                            </div>
+                            
+                            <div class="export-buttons">
+                                <button class="export-button">
+                                    <span>📄</span>
+                                    <span>CSV</span>
+                                </button>
+                                <button class="export-button">
+                                    <span>📊</span>
+                                    <span>JSON</span>
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Stats Panel -->
+            <div class="glass-card stats-panel">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>Key Metrics</span>
+                    </div>
+                    <div>
+                        <button>Customize</button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-value">42</div>
+                            <div class="stat-label">Stocks Passing Filters</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">0.38×</div>
+                            <div class="stat-label">Avg. Debt/EBITDA</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">8.4×</div>
+                            <div class="stat-label">Avg. EV/EBIT</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">1.06</div>
+                            <div class="stat-label">Avg. FCF/NI</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value">35.5%</div>
+                            <div class="stat-label">Avg. ROTCE</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Main Content -->
+            <div class="glass-card main-content">
+                <div class="card-header">
+                    <div class="card-title">
+                        <span>Stocks</span>
+                    </div>
+                    <div class="view-controls">
+                        <button class="view-button">
+                            <span>🃏</span>
+                            <span>Card View</span>
+                        </button>
+                        <button class="view-button active">
+                            <span>📋</span>
+                            <span>Table View</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="card-content">
+                    <div class="search-bar">
+                        <span class="search-icon">🔍</span>
+                        <input type="text" class="search-input" placeholder="Search by symbol, name, or sector...">
+                    </div>
+                    
+                    <!-- Stock Cards View (hidden by default) -->
+                    <div class="stock-cards" style="display: none;">
+                        <div class="stock-card">
+                            <div class="stock-header">
+                                <div class="stock-symbol">AAPL</div>
+                                <div class="stock-price">$198.45</div>
+                            </div>
+                            <div class="stock-name">Apple Inc.</div>
+                            <div class="stock-metrics">
+                                <div class="metric">
+                                    <div class="metric-label">Debt/EBITDA</div>
+                                    <div class="metric-value">0.32×</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">FCF/NI</div>
+                                    <div class="metric-value">1.12</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">EV/EBIT</div>
+                                    <div class="metric-value">8.7×</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">Score</div>
+                                    <div class="metric-value">87</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="stock-card">
+                            <div class="stock-header">
+                                <div class="stock-symbol">MSFT</div>
+                                <div class="stock-price">$412.78</div>
+                            </div>
+                            <div class="stock-name">Microsoft Corporation</div>
+                            <div class="stock-metrics">
+                                <div class="metric">
+                                    <div class="metric-label">Debt/EBITDA</div>
+                                    <div class="metric-value">0.45×</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">FCF/NI</div>
+                                    <div class="metric-value">0.98</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">EV/EBIT</div>
+                                    <div class="metric-value">9.2×</div>
+                                </div>
+                                <div class="metric">
+                                    <div class="metric-label">Score</div>
+                                    <div class="metric-value">82</div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- More stock cards would go here -->
+                    </div>
+                    
+                    <!-- Stock Table View -->
+                    <table class="stock-table">
+                        <thead>
+                            <tr>
+                                <th>Symbol</th>
+                                <th>Company</th>
+                                <th>Price</th>
+                                <th>Debt/EBITDA</th>
+                                <th>FCF/NI</th>
+                                <th>EV/EBIT</th>
+                                <th>ROTCE</th>
+                                <th>Score</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td>AAPL</td>
+                                <td>Apple Inc.</td>
+                                <td>$198.45</td>
+                                <td>0.32×</td>
+                                <td>1.12</td>
+                                <td>8.7×</td>
+                                <td>42.3%</td>
+                                <td>87</td>
+                            </tr>
+                            <tr>
+                                <td>MSFT</td>
+                                <td>Microsoft Corporation</td>
+                                <td>$412.78</td>
+                                <td>0.45×</td>
+                                <td>0.98</td>
+                                <td>9.2×</td>
+                                <td>38.7%</td>
+                                <td>82</td>
+                            </tr>
+                            <tr>
+                                <td>GOOG</td>
+                                <td>Alphabet Inc.</td>
+                                <td>$176.32</td>
+                                <td>0.28×</td>
+                                <td>1.05</td>
+                                <td>7.8×</td>
+                                <td>35.2%</td>
+                                <td>85</td>
+                            </tr>
+                            <tr>
+                                <td>AMZN</td>
+                                <td>Amazon.com Inc.</td>
+                                <td>$187.15</td>
+                                <td>0.52×</td>
+                                <td>0.92</td>
+                                <td>9.8×</td>
+                                <td>31.5%</td>
+                                <td>78</td>
+                            </tr>
+                            <tr>
+                                <td>BRK.B</td>
+                                <td>Berkshire Hathaway Inc.</td>
+                                <td>$412.78</td>
+                                <td>0.18×</td>
+                                <td>1.21</td>
+                                <td>6.5×</td>
+                                <td>29.8%</td>
+                                <td>91</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                    
+                    <div class="pagination">
+                        <div class="page-button">1</div>
+                        <div class="page-button active">2</div>
+                        <div class="page-button">3</div>
+                        <div class="page-button">4</div>
+                        <div class="page-button">5</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="fab">+</div>
+    <div class="tooltip" style="display: none;">Tooltip content goes here</div>
+</body>
+</html>

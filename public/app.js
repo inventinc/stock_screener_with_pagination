@@ -1,762 +1,1044 @@
 /**
- * Enhanced app.js with virtual scrolling and progressive loading
- * Designed to efficiently handle 5,700+ stocks for the Stock Screener application
+ * Stock Screener - Modern UX
+ * Main JavaScript for interactive functionality
  */
 
-// Global variables
-let stockDataManager;
-let virtualScroller;
-let debounceTimer;
-
-// DOM Elements
-let filtersToggle;
-let filtersContent;
-let viewButtons;
-let stockCardsContainer;
-let stockTableContainer;
-let filterButtons;
-let presetButtons;
-let resetFiltersBtn;
-let searchInput;
-let exportCsvBtn;
-let apiStatusIndicator;
-let apiStatusText;
-let totalStocksEl;
-let nyseStocksEl;
-let nasdaqStocksEl;
-let lastUpdatedEl;
-let loadingProgressBar;
-let loadingProgressText;
-
-// Constants
-const ITEM_HEIGHT = 160; // Height of each stock card in pixels
-const DEBOUNCE_DELAY = 300; // Milliseconds to wait before applying search filter
-
-// Initialize the application
 document.addEventListener('DOMContentLoaded', function() {
-    console.log("DOM fully loaded - initializing enhanced app with virtual scrolling");
-    
-    // Get DOM elements
-    filtersToggle = document.getElementById('filters-toggle');
-    filtersContent = document.getElementById('filters-content');
-    viewButtons = document.querySelectorAll('.view-button[data-view]');
-    stockCardsContainer = document.getElementById('stock-cards-container');
-    stockTableContainer = document.getElementById('stock-table-container');
-    filterButtons = document.querySelectorAll('.filter-button');
-    presetButtons = document.querySelectorAll('.preset-button');
-    resetFiltersBtn = document.getElementById('reset-filters-btn');
-    searchInput = document.getElementById('search-input');
-    exportCsvBtn = document.getElementById('export-csv-btn');
-    
-    apiStatusIndicator = document.getElementById('api-status-indicator');
-    apiStatusText = document.getElementById('api-status-text');
-    totalStocksEl = document.getElementById('total-stocks');
-    nyseStocksEl = document.getElementById('nyse-stocks');
-    nasdaqStocksEl = document.getElementById('nasdaq-stocks');
-    lastUpdatedEl = document.getElementById('last-updated');
-    
-    // Add loading progress elements
-    loadingProgressBar = document.getElementById('loading-progress-bar') || createLoadingProgressBar();
-    loadingProgressText = document.getElementById('loading-progress-text') || createLoadingProgressText();
-
-    // Set up event listeners
-    setupEventListeners();
-    
     // Initialize tooltips
-    initializeTooltips();
+    initTooltips();
     
-    // Initialize data manager
-    initializeDataManager();
+    // Initialize filter sections
+    initFilterSections();
+    
+    // Initialize filter chips
+    initFilterChips();
+    
+    // Initialize ranking cards
+    initRankingCards();
+    
+    // Initialize view controls
+    initViewControls();
+    
+    // Initialize mobile bottom sheet
+    initMobileBottomSheet();
+    
+    // Initialize theme toggle
+    initThemeToggle();
+    
+    // Initialize customize metrics
+    initCustomizeMetrics();
+    
+    // Initialize search functionality
+    initSearch();
+    
+    // Load sample data
+    loadSampleData();
 });
 
 /**
- * Create loading progress bar if it doesn't exist
- * @returns {HTMLElement} The loading progress bar element
+ * Initialize tooltips
  */
-function createLoadingProgressBar() {
-    const progressBar = document.createElement('div');
-    progressBar.id = 'loading-progress-bar';
-    progressBar.className = 'loading-progress-bar';
-    progressBar.innerHTML = '<div class="progress-inner"></div>';
-    document.body.appendChild(progressBar);
-    return progressBar;
-}
-
-/**
- * Create loading progress text if it doesn't exist
- * @returns {HTMLElement} The loading progress text element
- */
-function createLoadingProgressText() {
-    const progressText = document.createElement('div');
-    progressText.id = 'loading-progress-text';
-    progressText.className = 'loading-progress-text';
-    document.body.appendChild(progressText);
-    return progressText;
-}
-
-/**
- * Set up all event listeners
- */
-function setupEventListeners() {
-    // Filters toggle
-    if (filtersToggle && filtersContent) {
-        filtersToggle.onclick = function() {
-            filtersContent.classList.toggle('collapsed');
-            const toggleIcon = filtersToggle.querySelector('.filters-toggle');
-            if (toggleIcon) {
-                toggleIcon.classList.toggle('collapsed');
+function initTooltips() {
+    const tooltip = document.getElementById('tooltip');
+    // Only select info icons for tooltips, not all elements with data-tooltip
+    const infoIcons = document.querySelectorAll('.info-icon');
+    
+    infoIcons.forEach(element => {
+        element.addEventListener('mouseenter', e => {
+            const tooltipText = e.target.getAttribute('data-tooltip');
+            tooltip.textContent = tooltipText;
+            tooltip.style.display = 'block';
+            tooltip.style.opacity = '1';
+            
+            // Position the tooltip
+            const rect = e.target.getBoundingClientRect();
+            const tooltipRect = tooltip.getBoundingClientRect();
+            
+            let left = rect.left + (rect.width / 2) - (tooltipRect.width / 2);
+            let top = rect.top - tooltipRect.height - 10;
+            
+            // Ensure tooltip stays within viewport
+            if (left < 10) left = 10;
+            if (left + tooltipRect.width > window.innerWidth - 10) {
+                left = window.innerWidth - tooltipRect.width - 10;
             }
-        };
-    }
-
-    // View switching (Card/Table)
-    if (viewButtons) {
-        viewButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                const view = this.dataset.view;
-                if (view) {
-                    setActiveView(view);
-                }
-            });
-        });
-    }
-
-    // Filter buttons
-    if (filterButtons) {
-        filterButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                const filter = this.dataset.filter;
-                const value = this.dataset.value;
-                
-                if (filter && value) {
-                    this.classList.toggle('active');
-                    
-                    // Update active filters
-                    if (this.classList.contains('active')) {
-                        if (!activeFilters[filter].includes(value)) {
-                            activeFilters[filter].push(value);
-                        }
-                    } else {
-                        activeFilters[filter] = activeFilters[filter].filter(v => v !== value);
-                    }
-                    
-                    // Clear preset when manual filter is selected
-                    clearPresetSelection();
-                    
-                    // Apply filters
-                    applyFiltersAndSearch();
-                }
-            });
-        });
-    }
-
-    // Preset buttons
-    if (presetButtons) {
-        presetButtons.forEach(button => {
-            button.addEventListener('click', function() {
-                const preset = this.dataset.preset;
-                
-                // Clear all active filters first
-                clearAllFilters();
-                
-                // Set this preset as active
-                presetButtons.forEach(btn => btn.classList.remove('active'));
-                this.classList.add('active');
-                
-                // Set the active preset
-                activeFilters.preset = preset;
-                
-                // Apply preset filters
-                applyPresetFilters(preset);
-                
-                // Apply filters
-                applyFiltersAndSearch();
-            });
-        });
-    }
-
-    // Reset filters
-    if (resetFiltersBtn) {
-        resetFiltersBtn.addEventListener('click', function() {
-            clearAllFilters();
-            applyFiltersAndSearch();
-        });
-    }
-
-    // Search input with debounce
-    if (searchInput) {
-        searchInput.addEventListener('input', function() {
-            clearTimeout(debounceTimer);
-            debounceTimer = setTimeout(() => {
-                applyFiltersAndSearch();
-            }, DEBOUNCE_DELAY);
-        });
-    }
-
-    // Export CSV
-    if (exportCsvBtn) {
-        exportCsvBtn.addEventListener('click', function() {
-            exportToCSV();
-        });
-    }
-}
-
-/**
- * Initialize the data manager
- */
-function initializeDataManager() {
-    // Create data manager instance
-    stockDataManager = new DataManager({
-        apiEndpoint: '/api/stocks',
-        batchSize: 500,
-        useCache: true,
-        progressCallback: updateLoadingProgress,
-        completeCallback: onDataLoadComplete
-    });
-    
-    // Start loading data
-    stockDataManager.loadAllStocks();
-    
-    // Show loading state
-    updateLoadingState(true);
-}
-
-/**
- * Update loading progress UI
- * @param {Number} loaded - Number of stocks loaded
- * @param {Number} total - Total number of stocks to load
- * @param {Boolean} fromCache - Whether data was loaded from cache
- */
-function updateLoadingProgress(loaded, total, fromCache = false) {
-    const progress = total > 0 ? (loaded / total) * 100 : 0;
-    
-    // Update progress bar
-    if (loadingProgressBar) {
-        const progressInner = loadingProgressBar.querySelector('.progress-inner');
-        if (progressInner) {
-            progressInner.style.width = `${progress}%`;
-        }
-    }
-    
-    // Update progress text
-    if (loadingProgressText) {
-        loadingProgressText.textContent = fromCache 
-            ? `Loaded ${loaded} stocks from cache (${progress.toFixed(0)}%)`
-            : `Loading stocks: ${loaded} of ${total} (${progress.toFixed(0)}%)`;
-    }
-    
-    // Update header stats
-    updateHeaderStats(loaded, total);
-    
-    // If we have some data already, start rendering
-    if (loaded > 0 && !virtualScroller) {
-        initializeVirtualScroller();
-    }
-    
-    // If data is from cache, we can hide the loading indicators
-    if (fromCache) {
-        updateLoadingState(false);
-    }
-}
-
-/**
- * Handle data load completion
- * @param {Array} stocks - All loaded stocks
- */
-function onDataLoadComplete(stocks) {
-    console.log(`Data loading complete: ${stocks.length} stocks loaded`);
-    
-    // Update header stats
-    updateHeaderStats(stocks.length, stocks.length);
-    
-    // Hide loading indicators
-    updateLoadingState(false);
-    
-    // Initialize or update virtual scroller
-    if (!virtualScroller) {
-        initializeVirtualScroller();
-    } else {
-        // Update with all stocks
-        applyFiltersAndSearch();
-    }
-    
-    // Update connection status
-    if (apiStatusIndicator) {
-        apiStatusIndicator.classList.remove('disconnected');
-        apiStatusIndicator.classList.add('connected');
-    }
-    if (apiStatusText) {
-        apiStatusText.textContent = 'connected';
-    }
-}
-
-/**
- * Update loading state UI
- * @param {Boolean} isLoading - Whether data is loading
- */
-function updateLoadingState(isLoading) {
-    if (isLoading) {
-        // Show loading indicators
-        if (loadingProgressBar) loadingProgressBar.style.display = 'block';
-        if (loadingProgressText) loadingProgressText.style.display = 'block';
-        
-        // Add loading class to container
-        if (stockCardsContainer) stockCardsContainer.classList.add('loading');
-    } else {
-        // Hide loading indicators
-        if (loadingProgressBar) loadingProgressBar.style.display = 'none';
-        if (loadingProgressText) loadingProgressText.style.display = 'none';
-        
-        // Remove loading class from container
-        if (stockCardsContainer) stockCardsContainer.classList.remove('loading');
-    }
-}
-
-/**
- * Initialize the virtual scroller
- */
-function initializeVirtualScroller() {
-    if (!stockCardsContainer) return;
-    
-    // Clear existing content
-    stockCardsContainer.innerHTML = '';
-    
-    // Create virtual scroller instance
-    virtualScroller = new VirtualScroller({
-        container: stockCardsContainer,
-        itemHeight: ITEM_HEIGHT,
-        bufferSize: 5,
-        renderItem: renderStockCard
-    });
-    
-    // Apply initial filters
-    applyFiltersAndSearch();
-}
-
-/**
- * Render a stock card
- * @param {Object} stock - Stock data
- * @param {HTMLElement} container - Container element
- */
-function renderStockCard(stock, container) {
-    container.className = 'stock-card';
-    container.innerHTML = `
-        <div class="stock-header">
-            <div class="stock-symbol">${stock.ticker || stock.symbol || 'N/A'}</div>
-            <div class="stock-exchange">${stock.primary_exchange || stock.exchange || 'N/A'}</div>
-        </div>
-        <div class="stock-name">${stock.name || 'N/A'}</div>
-        <div class="stock-metrics">
-            <div class="metric"><span class="metric-label">Price</span><span class="metric-value">$${(stock.price || stock.last_trade?.p || 0).toFixed(2)}</span></div>
-            <div class="metric"><span class="metric-label">Market Cap</span><span class="metric-value">${formatMarketCap(stock.market_cap || stock.marketCap)}</span></div>
-            <div class="metric"><span class="metric-label">P/E Ratio</span><span class="metric-value">${(stock.pe_ratio || 0).toFixed(2)}</span></div>
-            <div class="metric"><span class="metric-label">Dividend Yield</span><span class="metric-value">${((stock.dividend_yield || 0) * 100).toFixed(2)}%</span></div>
-            <div class="metric"><span class="metric-label">52W High</span><span class="metric-value">$${(stock.year_high || 0).toFixed(2)}</span></div>
-            <div class="metric"><span class="metric-label">Score</span><span class="metric-value score ${getScoreClass(stock.custom_score || 0)} ">${(stock.custom_score || 0).toFixed(2)}</span></div>
-        </div>
-    `;
-}
-
-/**
- * Update header stats
- * @param {Number} totalCount - Total number of stocks
- * @param {Number} maxCount - Maximum number of stocks
- */
-function updateHeaderStats(totalCount, maxCount) {
-    if (!stockDataManager) return;
-    
-    const stocks = stockDataManager.getAllStocks();
-    
-    if (totalStocksEl) totalStocksEl.textContent = totalCount;
-    
-    // Count NYSE and NASDAQ stocks
-    const nyseCount = stocks.filter(s => {
-        const exchange = (s.primary_exchange || s.exchange || '').toUpperCase();
-        return exchange.includes('NYSE') || exchange.includes('XNYS');
-    }).length;
-    
-    const nasdaqCount = stocks.filter(s => {
-        const exchange = (s.primary_exchange || s.exchange || '').toUpperCase();
-        return exchange.includes('NASDAQ') || exchange.includes('XNAS');
-    }).length;
-    
-    if (nyseStocksEl) nyseStocksEl.textContent = nyseCount;
-    if (nasdaqStocksEl) nasdaqStocksEl.textContent = nasdaqCount;
-    if (lastUpdatedEl) lastUpdatedEl.textContent = new Date().toLocaleTimeString();
-}
-
-/**
- * Apply filters and search
- */
-function applyFiltersAndSearch() {
-    if (!stockDataManager || !virtualScroller) return;
-    
-    // Build filter criteria
-    const filters = buildFilterCriteria();
-    
-    // Get filtered stocks
-    const filteredStocks = stockDataManager.getFilteredStocks(filters);
-    
-    // Update virtual scroller
-    virtualScroller.setItems(filteredStocks);
-    
-    // Update count display
-    if (totalStocksEl) {
-        totalStocksEl.textContent = filteredStocks.length;
-    }
-}
-
-/**
- * Build filter criteria from UI state
- * @returns {Object} Filter criteria
- */
-function buildFilterCriteria() {
-    const filters = {};
-    
-    // Add search filter
-    if (searchInput && searchInput.value.trim()) {
-        filters.search = searchInput.value.trim();
-    }
-    
-    // Add active filters
-    if (activeFilters.market_cap.length > 0) {
-        filters.marketCap = activeFilters.market_cap;
-    }
-    
-    if (activeFilters.volume.length > 0) {
-        filters.volume = activeFilters.volume;
-    }
-    
-    if (activeFilters.debt.length > 0) {
-        filters.debt = activeFilters.debt;
-    }
-    
-    if (activeFilters.valuation.length > 0) {
-        filters.valuation = activeFilters.valuation;
-    }
-    
-    return filters;
-}
-
-/**
- * Format market cap for display
- * @param {Number} marketCap - Market cap value
- * @returns {String} Formatted market cap
- */
-function formatMarketCap(marketCap) {
-    if (!marketCap) return 'N/A';
-    
-    if (marketCap >= 1e12) {
-        return `$${(marketCap / 1e12).toFixed(2)}T`;
-    } else if (marketCap >= 1e9) {
-        return `$${(marketCap / 1e9).toFixed(2)}B`;
-    } else if (marketCap >= 1e6) {
-        return `$${(marketCap / 1e6).toFixed(2)}M`;
-    } else {
-        return `$${marketCap.toFixed(2)}`;
-    }
-}
-
-/**
- * Get CSS class for score
- * @param {Number} score - Score value
- * @returns {String} CSS class
- */
-function getScoreClass(score) {
-    if (score >= 80) return 'excellent';
-    if (score >= 60) return 'good';
-    if (score >= 40) return 'average';
-    if (score >= 20) return 'below-average';
-    return 'poor';
-}
-
-/**
- * Export filtered stocks to CSV
- */
-function exportToCSV() {
-    if (!stockDataManager) return;
-    
-    // Build filter criteria
-    const filters = buildFilterCriteria();
-    
-    // Get filtered stocks
-    const filteredStocks = stockDataManager.getFilteredStocks(filters);
-    
-    if (filteredStocks.length === 0) {
-        alert('No stocks to export');
-        return;
-    }
-    
-    // Create CSV content
-    let csvContent = 'Symbol,Name,Exchange,Price,Market Cap,P/E Ratio,Dividend Yield,52W High,Score\n';
-    
-    filteredStocks.forEach(stock => {
-        const row = [
-            stock.ticker || stock.symbol || '',
-            `"${(stock.name || '').replace(/"/g, '""')}"`,
-            stock.primary_exchange || stock.exchange || '',
-            (stock.price || stock.last_trade?.p || 0).toFixed(2),
-            stock.market_cap || stock.marketCap || 0,
-            (stock.pe_ratio || 0).toFixed(2),
-            ((stock.dividend_yield || 0) * 100).toFixed(2),
-            (stock.year_high || 0).toFixed(2),
-            (stock.custom_score || 0).toFixed(2)
-        ];
-        
-        csvContent += row.join(',') + '\n';
-    });
-    
-    // Create download link
-    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
-    const url = URL.createObjectURL(blob);
-    const link = document.createElement('a');
-    link.setAttribute('href', url);
-    link.setAttribute('download', `stock_screener_export_${new Date().toISOString().split('T')[0]}.csv`);
-    link.style.visibility = 'hidden';
-    
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-}
-
-// Active filters state
-let activeFilters = {
-    preset: null,
-    market_cap: [],
-    volume: [],
-    debt: [],
-    valuation: []
-};
-
-/**
- * Apply preset filters
- * @param {String} preset - Preset name
- */
-function applyPresetFilters(preset) {
-    // Clear existing filters
-    activeFilters.market_cap = [];
-    activeFilters.volume = [];
-    activeFilters.debt = [];
-    activeFilters.valuation = [];
-    
-    // Reset UI
-    filterButtons.forEach(button => button.classList.remove('active'));
-    
-    // Apply preset-specific filters
-    switch(preset) {
-        case 'value':
-            // Value stocks: Low P/E, Low Debt, Large Cap
-            activateFilter('valuation', 'cheap');
-            activateFilter('debt', 'low');
-            activateFilter('market_cap', 'large');
-            break;
-        case 'growth':
-            // Growth stocks: High P/E, Mid-Small Cap
-            activateFilter('valuation', 'premium');
-            activateFilter('market_cap', 'mid');
-            activateFilter('market_cap', 'small');
-            break;
-        case 'dividend':
-            // Dividend stocks: Large Cap, Low Debt
-            activateFilter('market_cap', 'large');
-            activateFilter('debt', 'low');
-            break;
-        case 'quality':
-            // Quality stocks: Fair P/E, Low Debt, High Volume
-            activateFilter('valuation', 'fair');
-            activateFilter('debt', 'low');
-            activateFilter('volume', 'high');
-            break;
-    }
-}
-
-/**
- * Activate a specific filter in the UI
- * @param {String} filterType - Filter type
- * @param {String} value - Filter value
- */
-function activateFilter(filterType, value) {
-    filterButtons.forEach(button => {
-        if (button.dataset.filter === filterType && button.dataset.value === value) {
-            button.classList.add('active');
-            if (!activeFilters[filterType].includes(value)) {
-                activeFilters[filterType].push(value);
+            
+            // If tooltip would go above viewport, show it below the element
+            if (top < 10) {
+                top = rect.bottom + 10;
             }
+            
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+        });
+        
+        element.addEventListener('mouseleave', () => {
+            tooltip.style.opacity = '0';
+            setTimeout(() => {
+                tooltip.style.display = 'none';
+            }, 200);
+        });
+        
+        // For mobile/touch devices
+        element.addEventListener('touchstart', e => {
+            e.preventDefault();
+            const tooltipText = e.target.getAttribute('data-tooltip');
+            tooltip.textContent = tooltipText;
+            tooltip.style.display = 'block';
+            tooltip.style.opacity = '1';
+            
+            // Position the tooltip
+            const rect = e.target.getBoundingClientRect();
+            const tooltipWidth = tooltip.offsetWidth || 200; // Estimate if not yet rendered
+            
+            let left = rect.left + (rect.width / 2) - (tooltipWidth / 2);
+            let top = rect.bottom + 10;
+            
+            // Ensure tooltip stays within viewport
+            if (left < 10) left = 10;
+            if (left + tooltipWidth > window.innerWidth - 10) {
+                left = window.innerWidth - tooltipWidth - 10;
+            }
+            
+            tooltip.style.left = `${left}px`;
+            tooltip.style.top = `${top}px`;
+            
+            // Hide tooltip after 3 seconds on touch devices
+            setTimeout(() => {
+                tooltip.style.opacity = '0';
+                setTimeout(() => {
+                    tooltip.style.display = 'none';
+                }, 200);
+            }, 3000);
+        });
+    });
+}
+
+/**
+ * Initialize collapsible filter sections
+ */
+function initFilterSections() {
+    const filterHeaders = document.querySelectorAll('.filter-section-header');
+    
+    filterHeaders.forEach(header => {
+        header.addEventListener('click', () => {
+            const content = header.nextElementSibling;
+            const toggleIcon = header.querySelector('.toggle-icon');
+            
+            // Toggle content visibility with animation
+            if (content.style.maxHeight && content.style.maxHeight !== '0px') {
+                // Collapse
+                content.style.maxHeight = '0px';
+                toggleIcon.textContent = '▼';
+                content.classList.remove('expanded');
+            } else {
+                // Expand
+                content.style.maxHeight = content.scrollHeight + 'px';
+                toggleIcon.textContent = '▲';
+                content.classList.add('expanded');
+            }
+        });
+        
+        // Collapse all sections by default
+        const content = header.nextElementSibling;
+        const toggleIcon = header.querySelector('.toggle-icon');
+        content.style.maxHeight = '0px';
+        toggleIcon.textContent = '▼';
+        content.classList.remove('expanded');
+    });
+}
+
+/**
+ * Initialize filter chips
+ */
+function initFilterChips() {
+    const filterChips = document.querySelectorAll('.filter-chip');
+    
+    filterChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            // Toggle active state
+            chip.classList.toggle('active');
+            
+            // Update applied filters
+            updateAppliedFilters();
+            
+            // Update filtered stocks
+            filterStocks();
+        });
+    });
+    
+    // Clear all filters button
+    const clearAllButton = document.getElementById('clear-all-filters');
+    clearAllButton.addEventListener('click', () => {
+        const activeChips = document.querySelectorAll('.filter-chip.active');
+        activeChips.forEach(chip => {
+            chip.classList.remove('active');
+        });
+        
+        // Update applied filters
+        updateAppliedFilters();
+        
+        // Update filtered stocks
+        filterStocks();
+    });
+}
+
+/**
+ * Initialize ranking cards
+ */
+function initRankingCards() {
+    const rankingCards = document.querySelectorAll('.ranking-card');
+    
+    rankingCards.forEach(card => {
+        card.addEventListener('click', () => {
+            // Remove active class from all cards
+            rankingCards.forEach(c => c.classList.remove('active'));
+            
+            // Add active class to clicked card
+            card.classList.add('active');
+            
+            // Update filtered stocks
+            filterStocks();
+        });
+    });
+    
+    // Initialize rank momentum toggle
+    const rankMomentumToggle = document.getElementById('rank-momentum-toggle');
+    rankMomentumToggle.addEventListener('click', () => {
+        rankMomentumToggle.classList.toggle('active');
+        filterStocks();
+    });
+    
+    // Initialize export buttons
+    const exportCsvButton = document.getElementById('export-csv');
+    const exportJsonButton = document.getElementById('export-json');
+    
+    exportCsvButton.addEventListener('click', () => {
+        alert('CSV export functionality will be implemented with backend integration.');
+    });
+    
+    exportJsonButton.addEventListener('click', () => {
+        alert('JSON export functionality will be implemented with backend integration.');
+    });
+}
+
+/**
+ * Initialize search functionality
+ */
+function initSearch() {
+    const searchInput = document.getElementById('search-input');
+    
+    // Sample stock data for search
+    const allStocks = [
+        { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', price: 198.45, debtEbitda: 0.32, fcfNi: 1.12, evEbit: 8.7, rotce: 42.3, score: 87 },
+        { symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology', price: 412.78, debtEbitda: 0.45, fcfNi: 0.98, evEbit: 9.2, rotce: 38.7, score: 82 },
+        { symbol: 'GOOG', name: 'Alphabet Inc.', sector: 'Technology', price: 176.32, debtEbitda: 0.28, fcfNi: 1.05, evEbit: 7.8, rotce: 35.2, score: 85 },
+        { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'Consumer Cyclical', price: 187.15, debtEbitda: 0.52, fcfNi: 0.92, evEbit: 9.8, rotce: 31.5, score: 78 },
+        { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', price: 412.78, debtEbitda: 0.18, fcfNi: 1.21, evEbit: 6.5, rotce: 29.8, score: 91 },
+        { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'Healthcare', price: 152.64, debtEbitda: 0.41, fcfNi: 1.08, evEbit: 10.2, rotce: 27.5, score: 79 },
+        { symbol: 'PG', name: 'Procter & Gamble Co', sector: 'Consumer Defensive', price: 165.32, debtEbitda: 0.37, fcfNi: 0.95, evEbit: 11.4, rotce: 24.8, score: 76 },
+        { symbol: 'V', name: 'Visa Inc.', sector: 'Financial Services', price: 278.45, debtEbitda: 0.22, fcfNi: 1.15, evEbit: 7.9, rotce: 45.2, score: 89 },
+        { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', price: 198.76, debtEbitda: 0.65, fcfNi: 0.88, evEbit: 12.5, rotce: 18.7, score: 72 },
+        { symbol: 'WMT', name: 'Walmart Inc.', sector: 'Consumer Defensive', price: 67.89, debtEbitda: 0.48, fcfNi: 0.91, evEbit: 10.8, rotce: 22.3, score: 74 },
+        { symbol: 'DIS', name: 'Walt Disney Co', sector: 'Communication Services', price: 112.34, debtEbitda: 0.56, fcfNi: 0.85, evEbit: 13.2, rotce: 19.5, score: 71 },
+        { symbol: 'KO', name: 'Coca-Cola Co', sector: 'Consumer Defensive', price: 62.45, debtEbitda: 0.42, fcfNi: 0.97, evEbit: 11.7, rotce: 26.8, score: 75 },
+        { symbol: 'PFE', name: 'Pfizer Inc.', sector: 'Healthcare', price: 34.56, debtEbitda: 0.39, fcfNi: 0.94, evEbit: 12.1, rotce: 23.4, score: 73 },
+        { symbol: 'NVDA', name: 'NVIDIA Corporation', sector: 'Technology', price: 487.65, debtEbitda: 0.15, fcfNi: 1.18, evEbit: 8.3, rotce: 48.7, score: 92 },
+        { symbol: 'HD', name: 'Home Depot Inc', sector: 'Consumer Cyclical', price: 345.67, debtEbitda: 0.35, fcfNi: 1.02, evEbit: 9.5, rotce: 32.6, score: 81 }
+    ];
+    
+    // Store the current search term
+    let currentSearchTerm = '';
+    
+    // Add event listener for input changes
+    searchInput.addEventListener('input', (e) => {
+        currentSearchTerm = e.target.value.trim().toLowerCase();
+        filterStocks();
+    });
+    
+    // Add event listener for Enter key
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            e.preventDefault();
+            filterStocks();
         }
     });
-}
-
-/**
- * Clear preset selection
- */
-function clearPresetSelection() {
-    activeFilters.preset = null;
-    presetButtons.forEach(button => button.classList.remove('active'));
-}
-
-/**
- * Clear all filters
- */
-function clearAllFilters() {
-    activeFilters = {
-        preset: null,
-        market_cap: [],
-        volume: [],
-        debt: [],
-        valuation: []
+    
+    // Clear search when clicking the X button (for browsers that support it)
+    searchInput.addEventListener('search', (e) => {
+        currentSearchTerm = e.target.value.trim().toLowerCase();
+        filterStocks();
+    });
+    
+    // Function to filter stocks based on search term
+    window.filterStocksBySearch = function(stocks) {
+        if (!currentSearchTerm) return stocks;
+        
+        return stocks.filter(stock => {
+            return stock.symbol.toLowerCase().includes(currentSearchTerm) ||
+                   stock.name.toLowerCase().includes(currentSearchTerm) ||
+                   stock.sector.toLowerCase().includes(currentSearchTerm);
+        });
     };
     
-    // Reset UI
-    filterButtons.forEach(button => button.classList.remove('active'));
-    presetButtons.forEach(button => button.classList.remove('active'));
-    
-    if (searchInput) searchInput.value = '';
+    // Make stock data available globally for search
+    window.allStocks = allStocks;
 }
 
 /**
- * Set active view (Card/Table)
- * @param {String} view - View type ('card' or 'table')
+ * Initialize customize metrics functionality
  */
-function setActiveView(view) {
-    // Update UI
-    viewButtons.forEach(button => {
-        if (button.dataset.view === view) {
-            button.classList.add('active');
-        } else {
-            button.classList.remove('active');
+function initCustomizeMetrics() {
+    const customizeButton = document.getElementById('customize-metrics');
+    
+    // Available metrics for customization
+    const availableMetrics = [
+        { id: 'total-stocks', label: 'Stocks Passing Filters', default: true },
+        { id: 'avg-debt-ebitda', label: 'Avg. Debt/EBITDA', default: true },
+        { id: 'avg-ev-ebit', label: 'Avg. EV/EBIT', default: true },
+        { id: 'avg-fcf-ni', label: 'Avg. FCF/NI', default: true },
+        { id: 'avg-rotce', label: 'Avg. ROTCE', default: true },
+        { id: 'avg-pe', label: 'Avg. P/E Ratio', default: false },
+        { id: 'avg-pb', label: 'Avg. P/B Ratio', default: false },
+        { id: 'avg-dividend', label: 'Avg. Dividend Yield', default: false },
+        { id: 'avg-roic', label: 'Avg. ROIC', default: false },
+        { id: 'avg-growth', label: 'Avg. Revenue Growth', default: false }
+    ];
+    
+    // User's selected metrics (start with defaults)
+    let selectedMetrics = availableMetrics.filter(metric => metric.default).map(metric => metric.id);
+    
+    // Create modal for metric customization
+    const modal = document.createElement('div');
+    modal.className = 'modal';
+    modal.id = 'metrics-modal';
+    modal.innerHTML = `
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Customize Metrics</h3>
+                <span class="close-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p>Select up to 5 metrics to display in the Key Metrics panel:</p>
+                <div class="metrics-list">
+                    ${availableMetrics.map(metric => `
+                        <div class="metric-option">
+                            <label>
+                                <input type="checkbox" id="metric-${metric.id}" value="${metric.id}" ${metric.default ? 'checked' : ''}>
+                                ${metric.label}
+                            </label>
+                        </div>
+                    `).join('')}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" id="cancel-metrics">Cancel</button>
+                <button class="btn btn-primary" id="apply-metrics">Apply</button>
+            </div>
+        </div>
+    `;
+    
+    // Add modal to the DOM
+    document.body.appendChild(modal);
+    
+    // Add modal styles
+    const style = document.createElement('style');
+    style.textContent = `
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background-color: rgba(0, 0, 0, 0.5);
+            z-index: 1000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .modal.active {
+            display: flex;
+        }
+        
+        .modal-content {
+            background-color: var(--bg-secondary);
+            border-radius: var(--radius-lg);
+            width: 90%;
+            max-width: 500px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-shadow: 0 4px 6px var(--shadow-color);
+            animation: slideUp 0.3s ease-out;
+        }
+        
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: var(--space-md);
+            border-bottom: 1px solid var(--border-color);
+        }
+        
+        .modal-header h3 {
+            margin: 0;
+            font-size: 1.25rem;
+        }
+        
+        .close-modal {
+            font-size: 1.5rem;
+            cursor: pointer;
+        }
+        
+        .modal-body {
+            padding: var(--space-md);
+        }
+        
+        .metrics-list {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: var(--space-sm);
+            margin-top: var(--space-md);
+        }
+        
+        .metric-option {
+            padding: var(--space-sm);
+        }
+        
+        .metric-option label {
+            display: flex;
+            align-items: center;
+            gap: var(--space-sm);
+            cursor: pointer;
+        }
+        
+        .modal-footer {
+            display: flex;
+            justify-content: flex-end;
+            gap: var(--space-md);
+            padding: var(--space-md);
+            border-top: 1px solid var(--border-color);
+        }
+        
+        .btn-primary {
+            background-color: var(--accent-primary);
+            color: white;
+            border: none;
+        }
+    `;
+    document.head.appendChild(style);
+    
+    // Open modal when customize button is clicked
+    customizeButton.addEventListener('click', () => {
+        // Reset checkboxes to match current selection
+        availableMetrics.forEach(metric => {
+            const checkbox = document.getElementById(`metric-${metric.id}`);
+            checkbox.checked = selectedMetrics.includes(metric.id);
+        });
+        
+        modal.classList.add('active');
+    });
+    
+    // Close modal when clicking the close button
+    const closeButton = modal.querySelector('.close-modal');
+    closeButton.addEventListener('click', () => {
+        modal.classList.remove('active');
+    });
+    
+    // Close modal when clicking outside the content
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) {
+            modal.classList.remove('active');
         }
     });
     
-    // Show/hide containers
-    if (view === 'card') {
-        if (stockCardsContainer) stockCardsContainer.style.display = 'block';
-        if (stockTableContainer) stockTableContainer.style.display = 'none';
-    } else {
-        if (stockCardsContainer) stockCardsContainer.style.display = 'none';
-        if (stockTableContainer) stockTableContainer.style.display = 'block';
+    // Cancel button
+    const cancelButton = document.getElementById('cancel-metrics');
+    cancelButton.addEventListener('click', () => {
+        modal.classList.remove('active');
+    });
+    
+    // Apply button
+    const applyButton = document.getElementById('apply-metrics');
+    applyButton.addEventListener('click', () => {
+        // Get selected metrics
+        const newSelectedMetrics = [];
+        availableMetrics.forEach(metric => {
+            const checkbox = document.getElementById(`metric-${metric.id}`);
+            if (checkbox.checked) {
+                newSelectedMetrics.push(metric.id);
+            }
+        });
         
-        // Render table view
-        renderTableView();
+        // Limit to 5 metrics
+        if (newSelectedMetrics.length > 5) {
+            alert('Please select a maximum of 5 metrics.');
+            return;
+        }
+        
+        // Ensure at least 1 metric is selected
+        if (newSelectedMetrics.length === 0) {
+            alert('Please select at least 1 metric.');
+            return;
+        }
+        
+        // Update selected metrics
+        selectedMetrics = newSelectedMetrics;
+        
+        // Update metrics display
+        updateMetricsDisplay();
+        
+        // Close modal
+        modal.classList.remove('active');
+    });
+    
+    // Enforce maximum of 5 selected metrics
+    const checkboxes = document.querySelectorAll('.metrics-list input[type="checkbox"]');
+    checkboxes.forEach(checkbox => {
+        checkbox.addEventListener('change', () => {
+            const checkedCount = document.querySelectorAll('.metrics-list input[type="checkbox"]:checked').length;
+            if (checkedCount > 5) {
+                checkbox.checked = false;
+                alert('You can select a maximum of 5 metrics.');
+            }
+        });
+    });
+    
+    // Function to update metrics display
+    function updateMetricsDisplay() {
+        const statsGrid = document.querySelector('.stats-grid');
+        statsGrid.innerHTML = '';
+        
+        // Add selected metrics
+        selectedMetrics.forEach(metricId => {
+            const metric = availableMetrics.find(m => m.id === metricId);
+            
+            // Create stat card
+            const statCard = document.createElement('div');
+            statCard.className = 'stat-card';
+            
+            // Get value for the metric (in a real app, this would come from actual data)
+            let value;
+            switch (metricId) {
+                case 'total-stocks':
+                    value = document.getElementById('total-stocks') ? 
+                            document.getElementById('total-stocks').textContent : '42';
+                    break;
+                case 'avg-debt-ebitda':
+                    value = '0.38×';
+                    break;
+                case 'avg-ev-ebit':
+                    value = '8.4×';
+                    break;
+                case 'avg-fcf-ni':
+                    value = '1.06';
+                    break;
+                case 'avg-rotce':
+                    value = '35.5%';
+                    break;
+                case 'avg-pe':
+                    value = '18.7×';
+                    break;
+                case 'avg-pb':
+                    value = '2.4×';
+                    break;
+                case 'avg-dividend':
+                    value = '1.8%';
+                    break;
+                case 'avg-roic':
+                    value = '22.3%';
+                    break;
+                case 'avg-growth':
+                    value = '12.5%';
+                    break;
+                default:
+                    value = 'N/A';
+            }
+            
+            statCard.innerHTML = `
+                <div class="stat-value" id="${metricId}">${value}</div>
+                <div class="stat-label">${metric.label}</div>
+            `;
+            
+            statsGrid.appendChild(statCard);
+        });
     }
 }
 
 /**
- * Render table view
+ * Update applied filters display
  */
-function renderTableView() {
-    if (!stockDataManager || !stockTableContainer) return;
+function updateAppliedFilters() {
+    const appliedFiltersContainer = document.getElementById('applied-filters');
+    appliedFiltersContainer.innerHTML = '';
     
-    // Build filter criteria
-    const filters = buildFilterCriteria();
+    const activeChips = document.querySelectorAll('.filters-panel .filter-chip.active');
+    let activeCount = 0;
     
-    // Get filtered stocks
-    const filteredStocks = stockDataManager.getFilteredStocks(filters);
-    
-    // Create table if it doesn't exist
-    let stockTable = stockTableContainer.querySelector('table');
-    if (!stockTable) {
-        stockTable = document.createElement('table');
-        stockTable.className = 'stock-table';
-        stockTable.innerHTML = `
-            <thead>
-                <tr>
-                    <th>Symbol</th>
-                    <th>Name</th>
-                    <th>Exchange</th>
-                    <th>Price</th>
-                    <th>Market Cap</th>
-                    <th>P/E Ratio</th>
-                    <th>Dividend Yield</th>
-                    <th>Score</th>
-                </tr>
-            </thead>
-            <tbody id="stock-table-body"></tbody>
-        `;
-        stockTableContainer.appendChild(stockTable);
-    }
-    
-    // Get table body
-    const stockTableBody = document.getElementById('stock-table-body');
-    if (!stockTableBody) return;
-    
-    // Clear existing content
-    stockTableBody.innerHTML = '';
-    
-    // Show message if no stocks
-    if (filteredStocks.length === 0) {
-        stockTableBody.innerHTML = '<tr><td colspan="8" style="text-align: center; padding: 20px;">No stocks match your criteria</td></tr>';
-        return;
-    }
-    
-    // Render first 100 stocks (pagination for table view)
-    const stocksToRender = filteredStocks.slice(0, 100);
-    
-    stocksToRender.forEach(stock => {
-        const row = document.createElement('tr');
-        row.innerHTML = `
-            <td>${stock.ticker || stock.symbol || 'N/A'}</td>
-            <td>${stock.name || 'N/A'}</td>
-            <td>${stock.primary_exchange || stock.exchange || 'N/A'}</td>
-            <td>$${(stock.price || stock.last_trade?.p || 0).toFixed(2)}</td>
-            <td>${formatMarketCap(stock.market_cap || stock.marketCap)}</td>
-            <td>${(stock.pe_ratio || 0).toFixed(2)}</td>
-            <td>${((stock.dividend_yield || 0) * 100).toFixed(2)}%</td>
-            <td class="score ${getScoreClass(stock.custom_score || 0)}">${(stock.custom_score || 0).toFixed(2)}</td>
-        `;
-        stockTableBody.appendChild(row);
+    activeChips.forEach(chip => {
+        activeCount++;
+        
+        // Create applied filter element
+        const appliedFilter = document.createElement('div');
+        appliedFilter.className = 'applied-filter';
+        
+        const filterText = document.createElement('span');
+        filterText.textContent = chip.textContent;
+        
+        const removeButton = document.createElement('span');
+        removeButton.className = 'remove-filter';
+        removeButton.textContent = '×';
+        removeButton.addEventListener('click', (e) => {
+            e.stopPropagation();
+            chip.classList.remove('active');
+            updateAppliedFilters();
+            filterStocks();
+        });
+        
+        appliedFilter.appendChild(filterText);
+        appliedFilter.appendChild(removeButton);
+        appliedFiltersContainer.appendChild(appliedFilter);
     });
     
-    // Add pagination message if needed
-    if (filteredStocks.length > 100) {
-        const paginationRow = document.createElement('tr');
-        paginationRow.innerHTML = `
-            <td colspan="8" style="text-align: center; padding: 10px; font-style: italic;">
-                Showing 100 of ${filteredStocks.length} stocks. Export to CSV to see all results.
-            </td>
-        `;
-        stockTableBody.appendChild(paginationRow);
+    // Update mobile filter button count
+    const activeFilterCount = document.getElementById('active-filter-count');
+    activeFilterCount.textContent = activeCount;
+}
+
+/**
+ * Initialize view controls (card view / table view)
+ */
+function initViewControls() {
+    const cardViewButton = document.getElementById('card-view-button');
+    const tableViewButton = document.getElementById('table-view-button');
+    const stockCards = document.getElementById('stock-cards');
+    const stockTableContainer = document.querySelector('.stock-table-container');
+    
+    cardViewButton.addEventListener('click', () => {
+        cardViewButton.classList.add('active');
+        tableViewButton.classList.remove('active');
+        stockCards.style.display = 'grid';
+        stockTableContainer.style.display = 'none';
+    });
+    
+    tableViewButton.addEventListener('click', () => {
+        tableViewButton.classList.add('active');
+        cardViewButton.classList.remove('active');
+        stockTableContainer.style.display = 'block';
+        stockCards.style.display = 'none';
+    });
+}
+
+/**
+ * Initialize mobile bottom sheet
+ */
+function initMobileBottomSheet() {
+    const mobileFilterButton = document.getElementById('mobile-filter-button');
+    const bottomSheet = document.getElementById('filter-bottom-sheet');
+    const closeButton = document.getElementById('close-bottom-sheet');
+    const overlay = document.getElementById('bottom-sheet-overlay');
+    const filterTabs = document.querySelectorAll('.filter-tab');
+    const filterContents = document.querySelectorAll('.filter-content');
+    const applyButton = document.getElementById('apply-filters');
+    const resetButton = document.getElementById('reset-filters');
+    
+    // Clone desktop filter content for mobile tabs
+    cloneFiltersForMobile();
+    
+    mobileFilterButton.addEventListener('click', () => {
+        bottomSheet.classList.add('open');
+        overlay.classList.add('active');
+        document.body.style.overflow = 'hidden';
+    });
+    
+    function closeBottomSheet() {
+        bottomSheet.classList.remove('open');
+        overlay.classList.remove('active');
+        document.body.style.overflow = '';
+    }
+    
+    closeButton.addEventListener('click', closeBottomSheet);
+    overlay.addEventListener('click', closeBottomSheet);
+    
+    // Tab navigation
+    filterTabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const tabId = tab.getAttribute('data-tab');
+            
+            // Update active tab
+            filterTabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            // Show corresponding content
+            filterContents.forEach(content => {
+                content.classList.remove('active');
+                if (content.id === `mobile-${tabId}-filters` || 
+                    content.id === `mobile-${tabId}-gates` || 
+                    content.id === `mobile-${tabId}-system`) {
+                    content.classList.add('active');
+                }
+            });
+        });
+    });
+    
+    // Apply button
+    applyButton.addEventListener('click', () => {
+        // Sync mobile filters with desktop filters
+        syncMobileFiltersToDesktop();
+        filterStocks();
+        closeBottomSheet();
+    });
+    
+    // Reset button
+    resetButton.addEventListener('click', () => {
+        const mobileActiveChips = document.querySelectorAll('#filter-bottom-sheet .filter-chip.active');
+        mobileActiveChips.forEach(chip => {
+            chip.classList.remove('active');
+        });
+    });
+}
+
+/**
+ * Clone desktop filters for mobile bottom sheet
+ */
+function cloneFiltersForMobile() {
+    // Basic filters
+    const basicFilters = document.getElementById('basic-filters-content');
+    const mobileBasicFilters = document.getElementById('mobile-basic-filters');
+    mobileBasicFilters.innerHTML = basicFilters.innerHTML;
+    
+    // Numeric gates
+    const numericGates = document.getElementById('numeric-gates-content');
+    const mobileNumericGates = document.getElementById('mobile-numeric-gates');
+    mobileNumericGates.innerHTML = numericGates.innerHTML;
+    
+    // Qualitative filters
+    const qualitativeFilters = document.getElementById('qualitative-filters-content');
+    const mobileQualitativeFilters = document.getElementById('mobile-qualitative-filters');
+    mobileQualitativeFilters.innerHTML = qualitativeFilters.innerHTML;
+    
+    // Ranking system
+    const rankingSystem = document.getElementById('ranking-system-content');
+    const mobileRankingSystem = document.getElementById('mobile-ranking-system');
+    mobileRankingSystem.innerHTML = rankingSystem.innerHTML;
+    
+    // Initialize filter chips in mobile view
+    const mobileFilterChips = document.querySelectorAll('#filter-bottom-sheet .filter-chip');
+    mobileFilterChips.forEach(chip => {
+        chip.addEventListener('click', () => {
+            chip.classList.toggle('active');
+        });
+    });
+    
+    // Initialize ranking cards in mobile view
+    const mobileRankingCards = document.querySelectorAll('#mobile-ranking-system .ranking-card');
+    mobileRankingCards.forEach(card => {
+        card.addEventListener('click', () => {
+            // Remove active class from all cards
+            mobileRankingCards.forEach(c => c.classList.remove('active'));
+            
+            // Add active class to clicked card
+            card.classList.add('active');
+        });
+    });
+    
+    // Initialize rank momentum toggle in mobile view
+    const mobileRankMomentumToggle = document.querySelector('#mobile-ranking-system .toggle');
+    if (mobileRankMomentumToggle) {
+        mobileRankMomentumToggle.addEventListener('click', () => {
+            mobileRankMomentumToggle.classList.toggle('active');
+        });
+    }
+    
+    // Initialize tooltips for mobile filter elements
+    initTooltips();
+}
+
+/**
+ * Sync mobile filters to desktop filters
+ */
+function syncMobileFiltersToDesktop() {
+    // Get all filter types and values
+    const filterTypes = ['market-cap', 'volume', 'debt', 'valuation', 'rotce', 
+                         'debt-ebitda', 'fcf-ni', 'share-cagr', 'ev-ebit', 'deep-value',
+                         'moat-keywords', 'insider-ownership', 'insider-buys', 'margin-trend', 
+                         'inc-roic', 'exclude-flags'];
+    
+    // Clear all desktop filters first
+    const desktopActiveChips = document.querySelectorAll('.filters-panel .filter-chip.active');
+    desktopActiveChips.forEach(chip => {
+        chip.classList.remove('active');
+    });
+    
+    // Apply mobile filters to desktop
+    const mobileActiveChips = document.querySelectorAll('#filter-bottom-sheet .filter-chip.active');
+    mobileActiveChips.forEach(mobileChip => {
+        const filterType = mobileChip.getAttribute('data-filter');
+        const filterValue = mobileChip.getAttribute('data-value');
+        
+        if (filterType && filterValue) {
+            const desktopChip = document.querySelector(`.filters-panel .filter-chip[data-filter="${filterType}"][data-value="${filterValue}"]`);
+            if (desktopChip) {
+                desktopChip.classList.add('active');
+            }
+        }
+    });
+    
+    // Sync ranking cards
+    const mobileActiveRankingCard = document.querySelector('#mobile-ranking-system .ranking-card.active');
+    if (mobileActiveRankingCard) {
+        const rankingType = mobileActiveRankingCard.getAttribute('data-ranking');
+        const desktopRankingCard = document.querySelector(`.filters-panel .ranking-card[data-ranking="${rankingType}"]`);
+        if (desktopRankingCard) {
+            document.querySelectorAll('.filters-panel .ranking-card').forEach(card => card.classList.remove('active'));
+            desktopRankingCard.classList.add('active');
+        }
+    }
+    
+    // Sync rank momentum toggle
+    const mobileRankMomentumToggle = document.querySelector('#mobile-ranking-system .toggle');
+    const desktopRankMomentumToggle = document.getElementById('rank-momentum-toggle');
+    if (mobileRankMomentumToggle && desktopRankMomentumToggle) {
+        if (mobileRankMomentumToggle.classList.contains('active')) {
+            desktopRankMomentumToggle.classList.add('active');
+        } else {
+            desktopRankMomentumToggle.classList.remove('active');
+        }
+    }
+    
+    // Update applied filters
+    updateAppliedFilters();
+}
+
+/**
+ * Initialize theme toggle
+ */
+function initThemeToggle() {
+    const themeToggle = document.getElementById('theme-toggle');
+    const prefersDarkScheme = window.matchMedia('(prefers-color-scheme: dark)');
+    
+    // Check for saved theme preference or use system preference
+    const savedTheme = localStorage.getItem('theme');
+    const isDarkMode = savedTheme === 'dark' || (savedTheme === null && prefersDarkScheme.matches);
+    
+    // Apply initial theme
+    if (isDarkMode) {
+        document.body.classList.add('dark-mode');
+        themeToggle.classList.add('active');
+    }
+    
+    // Toggle theme on click
+    themeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('dark-mode');
+        themeToggle.classList.toggle('active');
+        
+        // Save preference
+        const currentTheme = document.body.classList.contains('dark-mode') ? 'dark' : 'light';
+        localStorage.setItem('theme', currentTheme);
+    });
+}
+
+/**
+ * Filter stocks based on selected filters and search term
+ */
+function filterStocks() {
+    // Get all stocks
+    let stocks = window.allStocks || [];
+    
+    // Apply search filter first
+    if (window.filterStocksBySearch) {
+        stocks = window.filterStocksBySearch(stocks);
+    }
+    
+    // In a real implementation, this would apply the filters to the actual data
+    // For this demo, we'll just update the count and display filtered stocks
+    const activeFilters = document.querySelectorAll('.filter-chip.active');
+    const totalStocks = document.getElementById('total-stocks');
+    
+    // Simulate filtering by reducing the count based on active filters
+    const filteredCount = Math.max(5, stocks.length - (activeFilters.length * 2));
+    
+    totalStocks.textContent = filteredCount;
+    
+    // Update pagination
+    updatePagination(filteredCount);
+    
+    // Display filtered stocks
+    displayStocks(stocks.slice(0, filteredCount));
+    
+    // Show no results message if needed
+    const noResultsMessage = document.getElementById('no-results-message');
+    if (filteredCount === 0) {
+        if (!noResultsMessage) {
+            const message = document.createElement('div');
+            message.id = 'no-results-message';
+            message.className = 'no-results';
+            message.textContent = 'No stocks match your search criteria. Try adjusting your filters or search term.';
+            
+            const mainContent = document.querySelector('.main-content .card-content');
+            mainContent.appendChild(message);
+        }
+    } else if (noResultsMessage) {
+        noResultsMessage.remove();
     }
 }
 
-// Add CSS for loading indicators
-const style = document.createElement('style');
-style.textContent = `
-    .loading-progress-bar {
-        position: fixed;
-        top: 0;
-        left: 0;
-        width: 100%;
-        height: 4px;
-        background: #f0f0f0;
-        z-index: 1000;
+/**
+ * Update pagination based on filtered count
+ */
+function updatePagination(totalCount) {
+    const paginationContainer = document.getElementById('pagination');
+    paginationContainer.innerHTML = '';
+    
+    const itemsPerPage = 20;
+    const totalPages = Math.ceil(totalCount / itemsPerPage);
+    
+    // Only show pagination if we have more than one page
+    if (totalPages <= 1) return;
+    
+    // Create pagination buttons
+    for (let i = 1; i <= Math.min(5, totalPages); i++) {
+        const pageButton = document.createElement('div');
+        pageButton.className = 'page-button';
+        if (i === 1) pageButton.classList.add('active');
+        pageButton.textContent = i;
+        
+        pageButton.addEventListener('click', () => {
+            // Update active state
+            document.querySelectorAll('.page-button').forEach(btn => {
+                btn.classList.remove('active');
+            });
+            pageButton.classList.add('active');
+            
+            // In a real implementation, this would load the corresponding page of data
+        });
+        
+        paginationContainer.appendChild(pageButton);
     }
     
-    .loading-progress-bar .progress-inner {
-        height: 100%;
-        background: #0066ff;
-        width: 0;
-        transition: width 0.3s ease;
+    // Add ellipsis and last page if needed
+    if (totalPages > 5) {
+        const ellipsis = document.createElement('div');
+        ellipsis.className = 'page-button';
+        ellipsis.textContent = '...';
+        ellipsis.style.cursor = 'default';
+        
+        const lastPage = document.createElement('div');
+        lastPage.className = 'page-button';
+        lastPage.textContent = totalPages;
+        
+        paginationContainer.appendChild(ellipsis);
+        paginationContainer.appendChild(lastPage);
     }
+}
+
+/**
+ * Display stocks based on filtered data
+ */
+function displayStocks(stocks) {
+    const tableBody = document.getElementById('stock-table-body');
+    const cardsContainer = document.getElementById('stock-cards');
     
-    .loading-progress-text {
-        position: fixed;
-        top: 10px;
-        right: 10px;
-        background: rgba(0, 0, 0, 0.7);
-        color: white;
-        padding: 5px 10px;
-        border-radius: 4px;
-        font-size: 12px;
-        z-index: 1000;
-    }
+    // Clear existing content
+    tableBody.innerHTML = '';
+    cardsContainer.innerHTML = '';
     
-    .stock-card {
-        transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
+    // If no stocks to display, return early
+    if (!stocks || stocks.length === 0) return;
     
-    .stock-card:hover {
-        transform: translateY(-2px);
-        box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
-    }
-`;
-document.head.appendChild(style);
+    // Display in table view
+    stocks.forEach(stock => {
+        // Create table row
+        const row = document.createElement('tr');
+        row.innerHTML = `
+            <td>${stock.symbol}</td>
+            <td>${stock.name}</td>
+            <td>$${stock.price}</td>
+            <td>${stock.debtEbitda}×</td>
+            <td>${stock.fcfNi}</td>
+            <td>${stock.evEbit}×</td>
+            <td>${stock.rotce}%</td>
+            <td>${stock.score}</td>
+        `;
+        tableBody.appendChild(row);
+        
+        // Create card
+        const card = document.createElement('div');
+        card.className = 'stock-card';
+        card.innerHTML = `
+            <div class="stock-header">
+                <div class="stock-symbol">${stock.symbol}</div>
+                <div class="stock-price">$${stock.price}</div>
+            </div>
+            <div class="stock-name">${stock.name}</div>
+            <div class="stock-sector">${stock.sector}</div>
+            <div class="stock-metrics">
+                <div class="metric">
+                    <div class="metric-label">Debt/EBITDA</div>
+                    <div class="metric-value">${stock.debtEbitda}×</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">FCF/NI</div>
+                    <div class="metric-value">${stock.fcfNi}</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">EV/EBIT</div>
+                    <div class="metric-value">${stock.evEbit}×</div>
+                </div>
+                <div class="metric">
+                    <div class="metric-label">Score</div>
+                    <div class="metric-value">${stock.score}</div>
+                </div>
+            </div>
+        `;
+        cardsContainer.appendChild(card);
+    });
+}
+
+/**
+ * Load sample data
+ */
+function loadSampleData() {
+    // Initialize with some active filters
+    document.querySelector('.filter-chip[data-filter="market-cap"][data-value="large"]').classList.add('active');
+    document.querySelector('.filter-chip[data-filter="debt"][data-value="low"]').classList.add('active');
+    document.querySelector('.filter-chip[data-filter="debt-ebitda"][data-value="1"]').classList.add('active');
+    
+    // Update applied filters
+    updateAppliedFilters();
+    
+    // Filter stocks
+    filterStocks();
+    
+    // Set a ranking method
+    document.querySelector('.ranking-card[data-ranking="combined"]').classList.add('active');
+    
+    // Activate rank momentum toggle
+    document.getElementById('rank-momentum-toggle').classList.add('active');
+}
+
+
+async function fetchRanking(method) {
+  try {
+    const response = await fetch(`/api/filters/ranking/${method}`);
+    const data = await response.json();
+
+    const resultsContainer = document.getElementById('results');
+    resultsContainer.innerHTML = '';
+
+    data.forEach(stock => {
+      const card = document.createElement('div');
+      card.className = 'stock-card';
+      card.style = 'border: 1px solid #ccc; padding: 10px; width: 300px;';
+      card.innerHTML = `
+        <h3>${stock.companyName} (${stock.symbol})</h3>
+        <p><strong>Sector:</strong> ${stock.sector}</p>
+        <p><strong>Price:</strong> $${stock.price?.toFixed(2) ?? 'N/A'}</p>
+        <p><strong>Market Cap:</strong> $${stock.marketCap ? (stock.marketCap / 1e9).toFixed(2) + 'B' : 'N/A'}</p>
+      `;
+      resultsContainer.appendChild(card);
+    });
+  } catch (err) {
+    console.error('Error fetching ranking:', err);
+  }
+}
