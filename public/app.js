@@ -6,6 +6,9 @@
 document.addEventListener('DOMContentLoaded', function() {
     console.log('DOM content loaded, initializing application...');
     
+    // Ensure stocks container exists
+    ensureStocksContainerExists();
+    
     // Initialize tooltips
     initTooltips();
     
@@ -52,6 +55,66 @@ document.addEventListener('DOMContentLoaded', function() {
         loadLiveData();
     }, 1000);
 });
+
+/**
+ * Ensure stocks container exists
+ */
+function ensureStocksContainerExists() {
+    console.log('Ensuring stocks container exists...');
+    
+    // Check if stocks container already exists
+    let stocksContainer = document.getElementById('stocks-container');
+    
+    if (!stocksContainer) {
+        console.log('Stocks container not found, creating it...');
+        
+        // Create the stocks container
+        stocksContainer = document.createElement('div');
+        stocksContainer.id = 'stocks-container';
+        stocksContainer.className = 'table-view'; // Default to table view
+        
+        // Find the appropriate place to insert it
+        const mainContent = document.querySelector('.main-content .card-content');
+        if (mainContent) {
+            // Try to insert after the applied filters
+            const appliedFilters = document.getElementById('applied-filters');
+            if (appliedFilters) {
+                appliedFilters.after(stocksContainer);
+            } else {
+                // Or after the search bar
+                const searchBar = document.querySelector('.search-bar');
+                if (searchBar) {
+                    searchBar.after(stocksContainer);
+                } else {
+                    // Or just append to main content
+                    mainContent.appendChild(stocksContainer);
+                }
+            }
+            console.log('Stocks container created and inserted into main content');
+        } else {
+            // If main content not found, try to find stock cards or table
+            const stockCards = document.getElementById('stock-cards');
+            if (stockCards) {
+                stockCards.parentNode.insertBefore(stocksContainer, stockCards);
+                console.log('Stocks container created and inserted before stock cards');
+            } else {
+                const stockTable = document.querySelector('.stock-table-container');
+                if (stockTable) {
+                    stockTable.parentNode.insertBefore(stocksContainer, stockTable);
+                    console.log('Stocks container created and inserted before stock table');
+                } else {
+                    // Last resort: append to body
+                    document.body.appendChild(stocksContainer);
+                    console.log('Stocks container created and appended to body');
+                }
+            }
+        }
+    } else {
+        console.log('Stocks container already exists');
+    }
+    
+    return stocksContainer;
+}
 
 /**
  * Initialize tooltips
@@ -224,26 +287,48 @@ function initViewControls() {
     const stocksContainer = document.getElementById('stocks-container');
     
     // Check if elements exist before using them
-    if (!cardViewButton || !tableViewButton || !stocksContainer) {
+    if (!cardViewButton || !tableViewButton) {
         console.log('View control elements not found');
         return;
     }
     
+    // Ensure stocks container exists
+    if (!stocksContainer) {
+        console.log('Stocks container not found in initViewControls, creating it');
+        ensureStocksContainerExists();
+    }
+    
     // Set card view as default
-    stocksContainer.className = 'card-view';
-    cardViewButton.classList.add('active');
+    const container = document.getElementById('stocks-container');
+    if (container) {
+        container.className = 'card-view';
+        if (cardViewButton) cardViewButton.classList.add('active');
+        if (tableViewButton) tableViewButton.classList.remove('active');
+    }
     
-    cardViewButton.addEventListener('click', () => {
-        stocksContainer.className = 'card-view';
-        cardViewButton.classList.add('active');
-        tableViewButton.classList.remove('active');
-    });
+    if (cardViewButton) {
+        cardViewButton.addEventListener('click', () => {
+            console.log('Card view button clicked');
+            const container = document.getElementById('stocks-container');
+            if (container) {
+                container.className = 'card-view';
+            }
+            cardViewButton.classList.add('active');
+            tableViewButton.classList.remove('active');
+        });
+    }
     
-    tableViewButton.addEventListener('click', () => {
-        stocksContainer.className = 'table-view';
-        tableViewButton.classList.add('active');
-        cardViewButton.classList.remove('active');
-    });
+    if (tableViewButton) {
+        tableViewButton.addEventListener('click', () => {
+            console.log('Table view button clicked');
+            const container = document.getElementById('stocks-container');
+            if (container) {
+                container.className = 'table-view';
+            }
+            tableViewButton.classList.add('active');
+            cardViewButton.classList.remove('active');
+        });
+    }
 }
 
 /**
@@ -435,7 +520,7 @@ function initSearch() {
     const searchClear = document.getElementById('search-clear');
     
     // Check if elements exist
-    if (!searchInput || !searchClear) {
+    if (!searchInput) {
         console.log('Search elements not found');
         return;
     }
@@ -443,20 +528,24 @@ function initSearch() {
     // Handle input changes
     searchInput.addEventListener('input', () => {
         // Show/hide clear button
-        searchClear.style.display = searchInput.value ? 'block' : 'none';
+        if (searchClear) {
+            searchClear.style.display = searchInput.value ? 'block' : 'none';
+        }
         
         // Filter stocks
         filterStocks();
     });
     
     // Handle clear button
-    searchClear.addEventListener('click', () => {
-        searchInput.value = '';
-        searchClear.style.display = 'none';
-        
-        // Filter stocks
-        filterStocks();
-    });
+    if (searchClear) {
+        searchClear.addEventListener('click', () => {
+            searchInput.value = '';
+            searchClear.style.display = 'none';
+            
+            // Filter stocks
+            filterStocks();
+        });
+    }
 }
 
 // Store active filters
@@ -604,6 +693,9 @@ function formatFilterValue(filterType, value) {
  * Filter stocks based on active filters and search
  */
 function filterStocks() {
+    // Ensure stocks container exists
+    ensureStocksContainerExists();
+    
     // Get active ranking method
     const activeRankingCard = document.querySelector('.ranking-card.active');
     const rankingMethod = activeRankingCard ? activeRankingCard.getAttribute('data-ranking') : 'combined';
@@ -715,11 +807,14 @@ function filterStocks() {
  * @param {Array} stocks - Array of stock objects
  */
 function renderStocks(stocks) {
-    const stocksContainer = document.getElementById('stocks-container');
+    // Ensure stocks container exists
+    const stocksContainer = ensureStocksContainerExists();
     if (!stocksContainer) {
-        console.log('Stocks container not found');
+        console.log('Stocks container not found in renderStocks');
         return;
     }
+    
+    console.log(`Rendering ${stocks.length} stocks`);
     
     // Clear container
     stocksContainer.innerHTML = '';
@@ -830,6 +925,8 @@ function renderStocks(stocks) {
     // Update metrics display
     const savedMetrics = JSON.parse(localStorage.getItem('selectedMetrics')) || ['price', 'debtEbitda', 'fcfNi', 'evEbit', 'rotce', 'score'];
     updateMetricsDisplay(savedMetrics);
+    
+    console.log('Stocks rendered successfully');
 }
 
 /**
@@ -959,13 +1056,14 @@ function loadSampleData() {
 function loadLiveData() {
     console.log('Attempting to load live data from API...');
     
-    // Show loading indicator
-    const stocksContainer = document.getElementById('stocks-container');
+    // Ensure stocks container exists
+    const stocksContainer = ensureStocksContainerExists();
     if (!stocksContainer) {
-        console.log('Stocks container not found');
+        console.log('Stocks container not found in loadLiveData');
         return;
     }
     
+    // Show loading indicator
     stocksContainer.innerHTML = '<div class="loading-indicator">Loading stocks data...</div>';
     
     // Get the current URL to determine API base URL
@@ -1032,7 +1130,7 @@ function fetchStocksData(baseUrl) {
                     // Store stocks data globally
                     window.allStocks = data.stocks.map(stock => ({
                         symbol: stock.symbol,
-                        name: stock.companyName,
+                        name: stock.companyName || stock.symbol,
                         sector: stock.sector || 'Unknown',
                         price: stock.price || 0,
                         marketCap: stock.marketCap || 0,
@@ -1077,7 +1175,8 @@ function fetchStocksData(baseUrl) {
  * @param {string} message - Error message
  */
 function showApiError(message) {
-    const stocksContainer = document.getElementById('stocks-container');
+    // Ensure stocks container exists
+    const stocksContainer = ensureStocksContainerExists();
     if (!stocksContainer) return;
     
     stocksContainer.innerHTML = `
@@ -1098,3 +1197,9 @@ function showApiError(message) {
     // Load sample data as fallback
     loadSampleData();
 }
+
+// Ensure stocks container exists on window load
+window.addEventListener('load', function() {
+    console.log('Window loaded, ensuring stocks container exists');
+    ensureStocksContainerExists();
+});
