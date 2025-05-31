@@ -49,11 +49,44 @@ const stockScreenerPresets = [
 function createPresetsUI() {
   console.log('Creating presets UI...');
   
-  // Get the filters container instead of looking for ranking system
-  const filtersContainer = document.querySelector('.filters-container');
+  // Try multiple selectors to find the filters container
+  let filtersContainer = document.querySelector('.filters-container');
+  
+  // If not found, try alternative selectors
   if (!filtersContainer) {
-    console.error('Filters container not found');
-    return;
+    filtersContainer = document.querySelector('.filters');
+  }
+  
+  // If still not found, try the sidebar
+  if (!filtersContainer) {
+    filtersContainer = document.querySelector('.sidebar');
+  }
+  
+  // If still not found, try any container that might hold filters
+  if (!filtersContainer) {
+    filtersContainer = document.querySelector('.filter-section')?.parentNode;
+  }
+  
+  // If still not found, create a container
+  if (!filtersContainer) {
+    console.log('No filters container found, creating one');
+    filtersContainer = document.createElement('div');
+    filtersContainer.className = 'filters-container';
+    
+    // Try to find a good place to insert it
+    const sidebar = document.querySelector('.sidebar');
+    if (sidebar) {
+      sidebar.appendChild(filtersContainer);
+    } else {
+      // If no sidebar, try to insert before the stocks container
+      const stocksContainer = document.getElementById('stocks-container');
+      if (stocksContainer && stocksContainer.parentNode) {
+        stocksContainer.parentNode.insertBefore(filtersContainer, stocksContainer);
+      } else {
+        // Last resort: append to body
+        document.body.appendChild(filtersContainer);
+      }
+    }
   }
   
   // Check if presets section already exists
@@ -192,6 +225,12 @@ function updateResults() {
     window.filterStocks();
   } else {
     console.log('filterStocks function not found');
+    // Try to trigger a refresh of the stocks display
+    if (typeof window.loadLiveData === 'function') {
+      window.loadLiveData();
+    } else if (typeof window.loadSampleData === 'function') {
+      window.loadSampleData();
+    }
   }
 }
 
@@ -405,7 +444,7 @@ function addPresetsToMobileView() {
   const mobileBottomSheet = document.querySelector('.mobile-bottom-sheet-content');
   if (mobileBottomSheet) {
     // Check if presets section already exists in mobile view
-    if (!mobileBottomSheet.querySelector('.presets-section')) {
+    if (!mobileBottomSheet.querySelector('.mobile-filter-section[data-section="presets"]')) {
       console.log('Adding presets section to mobile bottom sheet');
       
       // Clone the presets section from desktop
@@ -417,6 +456,43 @@ function addPresetsToMobileView() {
         mobileBottomSheet.appendChild(mobilePresets);
         
         // Add event listeners to the cloned preset buttons
+        mobilePresets.querySelectorAll('.apply-preset-btn').forEach(button => {
+          button.addEventListener('click', function() {
+            const presetId = this.getAttribute('data-preset-id');
+            applyPreset(presetId);
+          });
+        });
+      } else {
+        // If desktop presets don't exist yet, create directly in mobile
+        const mobilePresets = document.createElement('div');
+        mobilePresets.className = 'filter-section presets-section mobile-filter-section';
+        mobilePresets.setAttribute('data-section', 'presets');
+        mobilePresets.innerHTML = `
+          <div class="filter-section-header" id="mobile-presets-header">
+            <div class="filter-section-title">
+              <span>🎯</span>
+              <span>Presets</span>
+            </div>
+            <span class="toggle-icon">▼</span>
+          </div>
+          <div class="filter-section-content" id="mobile-presets-content">
+            <div class="presets-container">
+              ${stockScreenerPresets.map(preset => `
+                <div class="preset-card" data-preset-id="${preset.id}">
+                  <div class="preset-icon">${preset.icon}</div>
+                  <div class="preset-details">
+                    <h3 class="preset-name">${preset.name}</h3>
+                    <p class="preset-description">${preset.description}</p>
+                  </div>
+                  <button class="btn btn-primary apply-preset-btn" data-preset-id="${preset.id}">Apply Preset</button>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+        `;
+        mobileBottomSheet.appendChild(mobilePresets);
+        
+        // Add event listeners to the preset buttons
         mobilePresets.querySelectorAll('.apply-preset-btn').forEach(button => {
           button.addEventListener('click', function() {
             const presetId = this.getAttribute('data-preset-id');
@@ -444,6 +520,15 @@ function initializePresets() {
       presetsContent.classList.remove('expanded');
     }
     console.log('Presets initialization complete');
+    
+    // Force a data load to ensure stocks are displayed
+    if (typeof window.loadLiveData === 'function') {
+      console.log('Triggering loadLiveData to ensure stocks are displayed');
+      window.loadLiveData();
+    } else if (typeof window.loadSampleData === 'function') {
+      console.log('Triggering loadSampleData to ensure stocks are displayed');
+      window.loadSampleData();
+    }
   }, 500);
 }
 
@@ -467,7 +552,7 @@ const observer = new MutationObserver((mutations) => {
   for (const mutation of mutations) {
     if (mutation.type === 'childList' && mutation.addedNodes.length > 0) {
       // Check if filters container was added
-      if (document.querySelector('.filters-container') && 
+      if ((document.querySelector('.filters-container') || document.querySelector('.filters') || document.querySelector('.sidebar')) && 
           !document.querySelector('.presets-section')) {
         console.log('Filters container detected in DOM changes, initializing presets');
         initializePresets();
@@ -477,6 +562,17 @@ const observer = new MutationObserver((mutations) => {
       if (document.querySelector('.mobile-filter-tabs')) {
         console.log('Mobile filter tabs detected, adding presets to mobile view');
         addPresetsToMobileView();
+      }
+      
+      // Check if stocks container was added or updated
+      if (document.getElementById('stocks-container') && 
+          document.getElementById('stocks-container').children.length === 0) {
+        console.log('Empty stocks container detected, triggering data load');
+        if (typeof window.loadLiveData === 'function') {
+          window.loadLiveData();
+        } else if (typeof window.loadSampleData === 'function') {
+          window.loadSampleData();
+        }
       }
     }
   }
@@ -488,4 +584,18 @@ observer.observe(document.body, { childList: true, subtree: true });
 // Expose function for manual initialization
 window.initializePresets = initializePresets;
 
-console.log('Presets script loaded');
+// Ensure stocks are loaded
+window.addEventListener('load', () => {
+  console.log('Window loaded, ensuring stocks are displayed');
+  setTimeout(() => {
+    if (document.getElementById('stocks-container') && 
+        document.getElementById('stocks-container').children.length === 0) {
+      console.log('No stocks displayed after load, triggering data load');
+      if (typeof window.loadLiveData === 'function') {
+        window.loadLiveData();
+      } else if (typeof window.loadSampleData === 'function') {
+        window.loadSampleData();
+      }
+    }
+  }, 1500);
+});
