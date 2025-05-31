@@ -31,7 +31,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize search functionality
     initSearch();
     
-    // Load live data instead of sample data
+    // Load sample data initially to ensure UI is populated
+    loadSampleData();
+    
+    // Then try to load live data
     loadLiveData();
 });
 
@@ -204,22 +207,28 @@ function initRankingCards() {
     
     // Initialize rank momentum toggle
     const rankMomentumToggle = document.getElementById('rank-momentum-toggle');
-    rankMomentumToggle.addEventListener('click', () => {
-        rankMomentumToggle.classList.toggle('active');
-        filterStocks();
-    });
+    if (rankMomentumToggle) {
+        rankMomentumToggle.addEventListener('click', () => {
+            rankMomentumToggle.classList.toggle('active');
+            filterStocks();
+        });
+    }
     
     // Initialize export buttons
     const exportCsvButton = document.getElementById('export-csv');
     const exportJsonButton = document.getElementById('export-json');
     
-    exportCsvButton.addEventListener('click', () => {
-        alert('CSV export functionality will be implemented with backend integration.');
-    });
+    if (exportCsvButton) {
+        exportCsvButton.addEventListener('click', () => {
+            alert('CSV export functionality will be implemented with backend integration.');
+        });
+    }
     
-    exportJsonButton.addEventListener('click', () => {
-        alert('JSON export functionality will be implemented with backend integration.');
-    });
+    if (exportJsonButton) {
+        exportJsonButton.addEventListener('click', () => {
+            alert('JSON export functionality will be implemented with backend integration.');
+        });
+    }
 }
 
 /**
@@ -564,11 +573,25 @@ function initViewControls() {
  */
 function initMobileBottomSheet() {
     const filterButton = document.getElementById('mobile-filter-button');
-    const bottomSheet = document.getElementById('mobile-bottom-sheet');
+    const bottomSheet = document.getElementById('filter-bottom-sheet');
     const closeButton = document.getElementById('close-bottom-sheet');
     const overlay = document.getElementById('bottom-sheet-overlay');
     
     if (!filterButton || !bottomSheet) return;
+    
+    // Update mobile filter tabs to use Presets instead of Ranking
+    const rankingTab = document.querySelector('.filter-tab[data-tab="ranking"]');
+    if (rankingTab) {
+        rankingTab.setAttribute('data-tab', 'presets');
+        rankingTab.textContent = 'Presets';
+        rankingTab.setAttribute('data-tooltip', 'Predefined filter combinations for different investment strategies');
+        
+        // Also update the corresponding content div
+        const rankingContent = document.getElementById('mobile-ranking-system');
+        if (rankingContent) {
+            rankingContent.id = 'mobile-presets';
+        }
+    }
     
     filterButton.addEventListener('click', () => {
         bottomSheet.classList.add('active');
@@ -664,28 +687,82 @@ function updateAppliedFilters() {
 }
 
 /**
- * Load live data from API
+ * Load sample data for initial UI display
+ */
+function loadSampleData() {
+    // Sample stock data
+    window.allStocks = [
+        { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', price: 198.45, debtEbitda: 0.32, fcfNi: 1.12, evEbit: 8.7, rotce: 42.3, score: 87 },
+        { symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology', price: 412.78, debtEbitda: 0.45, fcfNi: 0.98, evEbit: 9.2, rotce: 38.7, score: 82 },
+        { symbol: 'GOOG', name: 'Alphabet Inc.', sector: 'Technology', price: 176.32, debtEbitda: 0.28, fcfNi: 1.05, evEbit: 7.8, rotce: 35.2, score: 85 },
+        { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'Consumer Cyclical', price: 187.15, debtEbitda: 0.52, fcfNi: 0.92, evEbit: 9.8, rotce: 31.5, score: 78 },
+        { symbol: 'BRK.B', name: 'Berkshire Hathaway Inc.', sector: 'Financial Services', price: 412.78, debtEbitda: 0.18, fcfNi: 1.21, evEbit: 6.5, rotce: 29.8, score: 91 },
+        { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'Healthcare', price: 152.64, debtEbitda: 0.41, fcfNi: 1.08, evEbit: 10.2, rotce: 27.5, score: 79 },
+        { symbol: 'PG', name: 'Procter & Gamble Co', sector: 'Consumer Defensive', price: 165.32, debtEbitda: 0.37, fcfNi: 0.95, evEbit: 11.4, rotce: 24.8, score: 76 },
+        { symbol: 'V', name: 'Visa Inc.', sector: 'Financial Services', price: 278.45, debtEbitda: 0.22, fcfNi: 1.15, evEbit: 7.9, rotce: 45.2, score: 89 },
+        { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial Services', price: 198.76, debtEbitda: 0.65, fcfNi: 0.88, evEbit: 12.5, rotce: 18.7, score: 72 }
+    ];
+    
+    // Initialize with some active filters
+    document.querySelector('.filter-chip[data-filter="market-cap"][data-value="large"]').classList.add('active');
+    document.querySelector('.filter-chip[data-filter="debt"][data-value="low"]').classList.add('active');
+    document.querySelector('.filter-chip[data-filter="debt-ebitda"][data-value="1"]').classList.add('active');
+    
+    // Update applied filters
+    updateAppliedFilters();
+    
+    // Filter stocks
+    filterStocks();
+    
+    // Set a ranking method if ranking cards exist
+    const rankingCard = document.querySelector('.ranking-card[data-ranking="combined"]');
+    if (rankingCard) {
+        rankingCard.classList.add('active');
+    }
+    
+    // Activate rank momentum toggle if it exists
+    const rankMomentumToggle = document.getElementById('rank-momentum-toggle');
+    if (rankMomentumToggle) {
+        rankMomentumToggle.classList.add('active');
+    }
+}
+
+/**
+ * Load live data from API and refresh database
  */
 function loadLiveData() {
     // Show loading indicator
     const stocksContainer = document.getElementById('stocks-container');
     stocksContainer.innerHTML = '<div class="loading-indicator">Loading stocks data...</div>';
     
-    // Fetch stocks from API
-    fetch('/api/stocks')
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Network response was not ok');
-            }
-            return response.json();
-        })
-        .then(data => {
+    // First, try to refresh the database with live API data
+    fetch('/api/stocks/refresh-all', {
+        method: 'POST'
+    })
+    .then(response => {
+        console.log('Refresh all stocks initiated');
+        
+        // Now fetch the stocks from the database
+        return fetch('/api/stocks');
+    })
+    .then(response => {
+        if (!response.ok) {
+            throw new Error('Network response was not ok');
+        }
+        return response.json();
+    })
+    .then(data => {
+        console.log('Received data:', data);
+        
+        // Check if we have stocks data
+        if (data.stocks && data.stocks.length > 0) {
             // Store stocks data globally
             window.allStocks = data.stocks.map(stock => ({
                 symbol: stock.symbol,
                 name: stock.companyName,
                 sector: stock.sector || 'Unknown',
                 price: stock.price || 0,
+                marketCap: stock.marketCap || 0,
                 debtEbitda: stock.financials?.debtToEbitda || 0,
                 fcfNi: stock.financials?.fcfToNi || 0,
                 evEbit: stock.financials?.evToEbit || 0,
@@ -693,39 +770,33 @@ function loadLiveData() {
                 score: stock.ranking?.combinedScore || 0
             }));
             
-            // Initialize with some active filters
-            document.querySelector('.filter-chip[data-filter="market-cap"][data-value="large"]').classList.add('active');
-            document.querySelector('.filter-chip[data-filter="debt"][data-value="low"]').classList.add('active');
-            document.querySelector('.filter-chip[data-filter="debt-ebitda"][data-value="1"]').classList.add('active');
+            console.log('Mapped stocks:', window.allStocks);
             
             // Update applied filters
             updateAppliedFilters();
             
             // Filter stocks
             filterStocks();
-            
-            // Set a ranking method
-            document.querySelector('.ranking-card[data-ranking="combined"]').classList.add('active');
-            
-            // Activate rank momentum toggle
-            document.getElementById('rank-momentum-toggle').classList.add('active');
-        })
-        .catch(error => {
-            console.error('Error fetching stocks:', error);
-            stocksContainer.innerHTML = `
-                <div class="error-message">
-                    <h3>Error loading stocks data</h3>
-                    <p>${error.message}</p>
-                    <button id="retry-load" class="btn btn-primary">Retry</button>
-                </div>
-            `;
-            
-            // Add retry button functionality
-            const retryButton = document.getElementById('retry-load');
-            if (retryButton) {
-                retryButton.addEventListener('click', loadLiveData);
-            }
-        });
+        } else {
+            console.warn('No stocks data received from API');
+        }
+    })
+    .catch(error => {
+        console.error('Error fetching stocks:', error);
+        stocksContainer.innerHTML = `
+            <div class="error-message">
+                <h3>Error loading stocks data</h3>
+                <p>${error.message}</p>
+                <button id="retry-load" class="btn btn-primary">Retry</button>
+            </div>
+        `;
+        
+        // Add retry button functionality
+        const retryButton = document.getElementById('retry-load');
+        if (retryButton) {
+            retryButton.addEventListener('click', loadLiveData);
+        }
+    });
 }
 
 /**
@@ -752,7 +823,8 @@ function filterStocks() {
     const rankingMethod = activeRankingCard ? activeRankingCard.getAttribute('data-ranking') : 'combined';
     
     // Get rank momentum toggle state
-    const rankMomentumActive = document.getElementById('rank-momentum-toggle').classList.contains('active');
+    const rankMomentumToggle = document.getElementById('rank-momentum-toggle');
+    const rankMomentumActive = rankMomentumToggle ? rankMomentumToggle.classList.contains('active') : false;
     
     // Filter stocks
     let filteredStocks = window.allStocks || [];
@@ -887,12 +959,16 @@ function updateStocksDisplay(stocks) {
             let scoreColorClass = '';
             if (stock.score >= 85) {
                 scoreColorClass = 'score-excellent';
+                card.classList.add('score-excellent-bg');
             } else if (stock.score >= 70) {
                 scoreColorClass = 'score-good';
+                card.classList.add('score-good-bg');
             } else if (stock.score >= 50) {
                 scoreColorClass = 'score-average';
+                card.classList.add('score-average-bg');
             } else {
                 scoreColorClass = 'score-poor';
+                card.classList.add('score-poor-bg');
             }
             
             card.innerHTML = `
