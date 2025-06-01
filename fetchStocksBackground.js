@@ -1,7 +1,7 @@
 const axios = require('axios');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const Queue = require('p-queue').default; // Use .default for ES modules compatibility
+const Queue = require('p-queue');
 
 dotenv.config();
 

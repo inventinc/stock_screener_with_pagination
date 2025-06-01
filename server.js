@@ -3,7 +3,6 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const mongoose = require('mongoose');
-const PQueue = require('p-queue');
 const app = express();
 const port = process.env.PORT || 3000;
 
