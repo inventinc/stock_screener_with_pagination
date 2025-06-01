@@ -316,7 +316,7 @@ export const fetchStockListFromFMP = async (): Promise<Stock[]> => {
 };
 
 // New function to fetch stock data from local MongoDB API
-export const fetchStockListFromMongoDB = async (page: number = 1, limit: number = 1000): Promise<Stock[]> => {
+export const fetchStockListFromMongoDB = async (page: number = 1, limit: number = 15000): Promise<Stock[]> => {
   console.log("[stockService.ts] fetchStockListFromMongoDB called.");
   
   try {
