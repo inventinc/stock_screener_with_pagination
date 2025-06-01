@@ -4,22 +4,19 @@ const express = require('express');
 const axios = require('axios');
 const mongoose = require('mongoose');
 const PQueue = require('p-queue');
+const cors = require('cors');
 const app = express();
 const port = process.env.PORT || 3000;
 
-// Add middleware
+// Middleware
+app.use(cors());
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-// Add CORS support
-app.use((req, res, next) => {
-  res.header('Access-Control-Allow-Origin', '*');
-  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
-  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
-  if (req.method === 'OPTIONS') {
-    return res.sendStatus(200);
-  }
-  next();
+// Error handling middleware
+app.use((err, req, res, next) => {
+  console.error(err.stack);
+  res.status(500).json({ error: 'Something went wrong!' });
 });
 
 const mongoURI = process.env.MONGODB_URI;
@@ -32,7 +29,7 @@ if (!mongoURI) {
 mongoose.connect(mongoURI, { 
   useNewUrlParser: true, 
   useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000 // Add timeout
+  serverSelectionTimeoutMS: 5000
 })
 .then(() => console.log('MongoDB connected'))
 .catch(err => {
@@ -42,16 +39,20 @@ mongoose.connect(mongoURI, {
 
 // Handle process termination
 process.on('SIGTERM', () => {
-  console.log('Received SIGTERM. Performing graceful shutdown...');
-  mongoose.connection.close()
-    .then(() => {
-      console.log('MongoDB connection closed.');
-      process.exit(0);
-    })
-    .catch(err => {
-      console.error('Error during shutdown:', err);
-      process.exit(1);
-    });
+  console.info('SIGTERM signal received.');
+  console.log('Closing HTTP server...');
+  app.close(() => {
+    console.log('HTTP server closed.');
+    mongoose.connection.close(false)
+      .then(() => {
+        console.log('MongoDB connection closed.');
+        process.exit(0);
+      })
+      .catch(err => {
+        console.error('Error closing MongoDB connection:', err);
+        process.exit(1);
+      });
+  });
 });
 
 const stockSchema = new mongoose.Schema({
