@@ -4,56 +4,14 @@ const express = require('express');
 const axios = require('axios');
 const mongoose = require('mongoose');
 const PQueue = require('p-queue');
-const cors = require('cors');
 const app = express();
-const port = process.env.PORT || 3000;
-
-// Middleware
-app.use(cors());
-app.use(express.json());
-app.use(express.urlencoded({ extended: true }));
-
-// Error handling middleware
-app.use((err, req, res, next) => {
-  console.error(err.stack);
-  res.status(500).json({ error: 'Something went wrong!' });
-});
+const port = 3000;
 
 const mongoURI = process.env.MONGODB_URI;
 
-if (!mongoURI) {
-  console.error('MONGODB_URI environment variable is not set');
-  process.exit(1);
-}
-
-mongoose.connect(mongoURI, { 
-  useNewUrlParser: true, 
-  useUnifiedTopology: true,
-  serverSelectionTimeoutMS: 5000
-})
-.then(() => console.log('MongoDB connected'))
-.catch(err => {
-  console.error('MongoDB connection error:', err);
-  process.exit(1);
-});
-
-// Handle process termination
-process.on('SIGTERM', () => {
-  console.info('SIGTERM signal received.');
-  console.log('Closing HTTP server...');
-  app.close(() => {
-    console.log('HTTP server closed.');
-    mongoose.connection.close(false)
-      .then(() => {
-        console.log('MongoDB connection closed.');
-        process.exit(0);
-      })
-      .catch(err => {
-        console.error('Error closing MongoDB connection:', err);
-        process.exit(1);
-      });
-  });
-});
+mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
+  .then(() => console.log('MongoDB connected'))
+  .catch(err => console.error('MongoDB connection error:', err));
 
 const stockSchema = new mongoose.Schema({
   // From /api/v3/profile/{symbol}
@@ -94,7 +52,7 @@ const stockSchema = new mongoose.Schema({
   enterpriseValueOverEBITDATTM: { type: Number },
   freeCashFlowPerShareTTM: { type: Number },
 
-  lastUpdated: { type: Date, default: Date.now },
+  lastUpdated: { type: Date, default: Date.now }
 
   // Derived fields
   simpleScore: { type: Number },
