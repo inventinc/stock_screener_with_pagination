@@ -5,7 +5,7 @@ const axios = require('axios');
 const mongoose = require('mongoose');
 const PQueue = require('p-queue');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 const mongoURI = process.env.MONGODB_URI;
 
