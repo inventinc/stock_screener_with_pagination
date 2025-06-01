@@ -8,7 +8,7 @@ import { Theme, Stock, StockDetails, ActiveFilters, KeyMetricVisibility, Display
 // Import constants
 import { STOCKS_PER_PAGE, INITIAL_KEY_METRICS_VISIBILITY, DISPLAY_METRICS_CONFIG, INITIAL_STOCK_LOAD_COUNT } from './constants';
 // Import services
-import { fetchStockListFromFMP, fetchStockDetailsFromFMP, FMPApiError } from './services/stockService';
+import { fetchStockListFromFMP, fetchStockListFromMongoDB, fetchStockDetailsFromFMP, FMPApiError } from './services/stockService';
 // Import components
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -113,7 +113,7 @@ const App: React.FC = () => {
     setIsInitialLoading(true);
     setError(null);
     try {
-      const stocks = await fetchStockListFromFMP();
+      const stocks = await fetchStockListFromMongoDB();
       setAllStocks(stocks);
       // Filters and search will be applied by their own useEffect
     } catch (err: any) {
