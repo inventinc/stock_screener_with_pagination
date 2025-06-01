@@ -7,11 +7,52 @@ const PQueue = require('p-queue');
 const app = express();
 const port = process.env.PORT || 3000;
 
+// Add middleware
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Add CORS support
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  res.header('Access-Control-Allow-Methods', 'GET, POST, PUT, DELETE, OPTIONS');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 const mongoURI = process.env.MONGODB_URI;
 
-mongoose.connect(mongoURI, { useNewUrlParser: true, useUnifiedTopology: true })
-  .then(() => console.log('MongoDB connected'))
-  .catch(err => console.error('MongoDB connection error:', err));
+if (!mongoURI) {
+  console.error('MONGODB_URI environment variable is not set');
+  process.exit(1);
+}
+
+mongoose.connect(mongoURI, { 
+  useNewUrlParser: true, 
+  useUnifiedTopology: true,
+  serverSelectionTimeoutMS: 5000 // Add timeout
+})
+.then(() => console.log('MongoDB connected'))
+.catch(err => {
+  console.error('MongoDB connection error:', err);
+  process.exit(1);
+});
+
+// Handle process termination
+process.on('SIGTERM', () => {
+  console.log('Received SIGTERM. Performing graceful shutdown...');
+  mongoose.connection.close()
+    .then(() => {
+      console.log('MongoDB connection closed.');
+      process.exit(0);
+    })
+    .catch(err => {
+      console.error('Error during shutdown:', err);
+      process.exit(1);
+    });
+});
 
 const stockSchema = new mongoose.Schema({
   // From /api/v3/profile/{symbol}
@@ -52,7 +93,7 @@ const stockSchema = new mongoose.Schema({
   enterpriseValueOverEBITDATTM: { type: Number },
   freeCashFlowPerShareTTM: { type: Number },
 
-  lastUpdated: { type: Date, default: Date.now }
+  lastUpdated: { type: Date, default: Date.now },
 
   // Derived fields
   simpleScore: { type: Number },
