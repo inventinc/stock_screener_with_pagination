@@ -131,7 +131,8 @@ app.get('/api/v1/stocks', async (req, res) => {
       }
     }
 
-    // Debt filtering with proper mapping
+    // Capital Structure Filters
+    // Debt/Equity Ratio filtering
     if (req.query.debtCategory) {
       filter.debtCategory = req.query.debtCategory;
     } else if (req.query.debt || req.query.debtEquityRatio) {
@@ -146,6 +147,21 @@ app.get('/api/v1/stocks', async (req, res) => {
       }
     }
 
+    // Debt/EBITDA filtering
+    if (req.query.numericDebtEbitdaCategory) {
+      filter.numericDebtEbitdaCategory = req.query.numericDebtEbitdaCategory;
+    } else if (req.query.debtToEbitda) {
+      const debtEbitdaMap = {
+        'le1x': 'le1x',
+        'le0.5x': 'le0.5x', 
+        'le0.25x': 'le0.25x'
+      };
+      if (debtEbitdaMap[req.query.debtToEbitda]) {
+        filter.numericDebtEbitdaCategory = debtEbitdaMap[req.query.debtToEbitda];
+      }
+    }
+
+    // Profitability Filters
     // ROE/ROTCE filtering with proper mapping
     if (req.query.rotceCategory) {
       filter.rotceCategory = req.query.rotceCategory;
@@ -161,7 +177,40 @@ app.get('/api/v1/stocks', async (req, res) => {
       }
     }
 
-    // Valuation/P/E filtering with proper mapping
+    // FCF/Net Income filtering
+    if (req.query.numericFcfNiCategory) {
+      filter.numericFcfNiCategory = req.query.numericFcfNiCategory;
+    } else if (req.query.fcfToNetIncome) {
+      const fcfNiMap = {
+        'ge0.8': 'ge0.8',
+        'ge1.0': 'ge1.0',
+        'ge1.2': 'ge1.2'
+      };
+      if (fcfNiMap[req.query.fcfToNetIncome]) {
+        filter.numericFcfNiCategory = fcfNiMap[req.query.fcfToNetIncome];
+      }
+    }
+
+    // Gross Margin Trend filtering (placeholder - would need database field)
+    if (req.query.gmTrend) {
+      // Note: This would require a grossMarginTrend field in the database
+      // For now, we'll skip this filter as the field doesn't exist
+      console.log('Gross margin trend filter requested but not implemented:', req.query.gmTrend);
+    }
+
+    // Capital Discipline Filters (placeholders - would need database fields)
+    if (req.query.incRoic) {
+      // Note: This would require an incrementalRoic field in the database
+      console.log('Incremental ROIC filter requested but not implemented:', req.query.incRoic);
+    }
+
+    if (req.query.shareCountChange) {
+      // Note: This would require a shareCountChange field in the database
+      console.log('Share count change filter requested but not implemented:', req.query.shareCountChange);
+    }
+
+    // Valuation Filters
+    // P/E Ratio / Valuation filtering with proper mapping
     if (req.query.valuationCategory) {
       filter.valuationCategory = req.query.valuationCategory;
     } else if (req.query.peRatio || req.query.valuation) {
@@ -176,13 +225,38 @@ app.get('/api/v1/stocks', async (req, res) => {
       }
     }
 
-    // Advanced numeric filters
-    if (req.query.debtToEbitda) {
-      filter.numericDebtEbitdaCategory = req.query.debtToEbitda;
+    // EV/EBITDA filtering (placeholder - would need database field)
+    if (req.query.evToEbit) {
+      // Note: This would require an evToEbitCategory field in the database
+      console.log('EV/EBITDA filter requested but not implemented:', req.query.evToEbit);
     }
 
-    if (req.query.fcfToNetIncome) {
-      filter.numericFcfNiCategory = req.query.fcfToNetIncome;
+    // Price/NCAV filtering (placeholder - would need database field)
+    if (req.query.priceToNCAV) {
+      // Note: This would require a priceToNCAV field in the database
+      console.log('Price/NCAV filter requested but not implemented:', req.query.priceToNCAV);
+    }
+
+    // Ownership & Governance Filters (placeholders - would need database fields)
+    if (req.query.insiderOwn) {
+      // Note: This would require an insiderOwnership field in the database
+      console.log('Insider ownership filter requested but not implemented:', req.query.insiderOwn);
+    }
+
+    if (req.query.netInsiderTrx) {
+      // Note: This would require a netInsiderTransactions field in the database
+      console.log('Net insider transactions filter requested but not implemented:', req.query.netInsiderTrx);
+    }
+
+    if (req.query.rdFlags) {
+      // Note: This would require red flags fields in the database
+      console.log('Red flags filter requested but not implemented:', req.query.rdFlags);
+    }
+
+    // Qualitative & Catalysts Filters (placeholders - would need database fields)
+    if (req.query.moatKws) {
+      // Note: This would require a moatKeywords field in the database
+      console.log('Moat keywords filter requested but not implemented:', req.query.moatKws);
     }
 
     console.log('Applied filters:', filter);
