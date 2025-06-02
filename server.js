@@ -3,9 +3,8 @@ require('dotenv').config();
 const express = require('express');
 const axios = require('axios');
 const mongoose = require('mongoose');
-const PQueue = require('p-queue');
 const app = express();
-const port = 3000;
+const port = process.env.PORT || 3000;
 
 const mongoURI = process.env.MONGODB_URI;
 
@@ -52,7 +51,7 @@ const stockSchema = new mongoose.Schema({
   enterpriseValueOverEBITDATTM: { type: Number },
   freeCashFlowPerShareTTM: { type: Number },
 
-  lastUpdated: { type: Date, default: Date.now }
+  lastUpdated: { type: Date, default: Date.now },
 
   // Derived fields
   simpleScore: { type: Number },
@@ -76,8 +75,13 @@ const stockSchema = new mongoose.Schema({
 
 });
 const Stock = mongoose.model('Stock', stockSchema);
+
+// Serve static files from the React app build directory
+app.use(express.static('public/dist'));
+
+// Serve the React app for all non-API routes
 app.get('/', (req, res) => {
-  res.send('Hello World!');
+  res.sendFile(__dirname + '/public/dist/index.html');
 });
 
 stockSchema.index({ symbol: 1 }); // Index for faster lookups by symbol
@@ -95,11 +99,93 @@ app.get('/api/v1/stocks', async (req, res) => {
       filter.sector = req.query.sector;
     }
 
+    // Market Cap filtering with proper mapping
     if (req.query.marketCapCategory) {
-      // Assuming you have a field like 'marketCapCategory' stored in your schema
-      // You would need logic in your background job to calculate and save this category
       filter.marketCapCategory = req.query.marketCapCategory;
+    } else if (req.query.marketCap) {
+      // Map frontend filter values to database values
+      const marketCapMap = {
+        'large': 'midLarge',
+        'midLarge': 'midLarge',
+        'small': 'small',
+        'micro': 'micro',
+        'nano': 'nano'
+      };
+      if (marketCapMap[req.query.marketCap]) {
+        filter.marketCapCategory = marketCapMap[req.query.marketCap];
+      }
     }
+
+    // Volume filtering with proper mapping
+    if (req.query.volumeCategory) {
+      filter.volumeCategory = req.query.volumeCategory;
+    } else if (req.query.volume) {
+      // Map frontend filter values to database values
+      const volumeMap = {
+        'high': 'high',
+        'medium': 'medium',
+        'low': 'low'
+      };
+      if (volumeMap[req.query.volume]) {
+        filter.volumeCategory = volumeMap[req.query.volume];
+      }
+    }
+
+    // Debt filtering with proper mapping
+    if (req.query.debtCategory) {
+      filter.debtCategory = req.query.debtCategory;
+    } else if (req.query.debt || req.query.debtEquityRatio) {
+      const debtValue = req.query.debt || req.query.debtEquityRatio;
+      const debtMap = {
+        'low': 'low',
+        'medium': 'medium',
+        'high': 'high'
+      };
+      if (debtMap[debtValue]) {
+        filter.debtCategory = debtMap[debtValue];
+      }
+    }
+
+    // ROE/ROTCE filtering with proper mapping
+    if (req.query.rotceCategory) {
+      filter.rotceCategory = req.query.rotceCategory;
+    } else if (req.query.roe) {
+      const roeMap = {
+        'excellent': 'excellent',
+        'good': 'good',
+        'average': 'average',
+        'poor': 'poor'
+      };
+      if (roeMap[req.query.roe]) {
+        filter.rotceCategory = roeMap[req.query.roe];
+      }
+    }
+
+    // Valuation/P/E filtering with proper mapping
+    if (req.query.valuationCategory) {
+      filter.valuationCategory = req.query.valuationCategory;
+    } else if (req.query.peRatio || req.query.valuation) {
+      const valuationValue = req.query.peRatio || req.query.valuation;
+      const valuationMap = {
+        'value': 'value',
+        'growth': 'growth',
+        'blend': 'blend'
+      };
+      if (valuationMap[valuationValue]) {
+        filter.valuationCategory = valuationMap[valuationValue];
+      }
+    }
+
+    // Advanced numeric filters
+    if (req.query.debtToEbitda) {
+      filter.numericDebtEbitdaCategory = req.query.debtToEbitda;
+    }
+
+    if (req.query.fcfToNetIncome) {
+      filter.numericFcfNiCategory = req.query.fcfToNetIncome;
+    }
+
+    console.log('Applied filters:', filter);
 
     // Sorting
     if (req.query.sortBy) {

@@ -8,7 +8,7 @@ import { Theme, Stock, StockDetails, ActiveFilters, KeyMetricVisibility, Display
 // Import constants
 import { STOCKS_PER_PAGE, INITIAL_KEY_METRICS_VISIBILITY, DISPLAY_METRICS_CONFIG, INITIAL_STOCK_LOAD_COUNT } from './constants';
 // Import services
-import { fetchStockListFromFMP, fetchStockDetailsFromFMP, FMPApiError } from './services/stockService';
+import { fetchStockListFromFMP, fetchStockListFromMongoDB, fetchStockDetailsFromFMP, FMPApiError } from './services/stockService';
 // Import components
 import Header from './components/Header';
 import Sidebar from './components/Sidebar';
@@ -108,16 +108,51 @@ const App: React.FC = () => {
     setTheme(prevTheme => prevTheme === 'light' ? 'dark' : 'light');
   };
 
-  const loadInitialStocks = useCallback(async () => {
-    console.log("[App component] loadInitialStocks called."); // Diagnostic log
+  const loadStocksWithFilters = useCallback(async (filters: ActiveFilters = {}, search: string = '') => {
+    console.log("[App component] loadStocksWithFilters called with filters:", filters, "search:", search);
     setIsInitialLoading(true);
     setError(null);
     try {
-      const stocks = await fetchStockListFromFMP();
-      setAllStocks(stocks);
-      // Filters and search will be applied by their own useEffect
+      // Convert activeFilters to the format expected by the API
+      const apiFilters = {
+        marketCap: filters.marketCap,
+        volume: filters.volume,
+        debtEquityRatio: filters.debtEquityRatio,
+        roe: filters.roe,
+        peRatio: filters.peRatio,
+        sector: filters.sector,
+        debtToEbitda: filters.debtToEbitda,
+        fcfToNetIncome: filters.fcfToNetIncome
+      };
+
+      // Remove undefined values
+      Object.keys(apiFilters).forEach(key => {
+        if (apiFilters[key] === undefined) {
+          delete apiFilters[key];
+        }
+      });
+
+      console.log("[App component] Sending API filters:", apiFilters);
+
+      const stocks = await fetchStockListFromMongoDB(1, 15000, apiFilters);
+      
+      // Apply search filter on the client side (since it's more complex)
+      let filteredStocks = stocks;
+      if (search.trim() !== '') {
+        const lowerSearchTerm = search.toLowerCase();
+        filteredStocks = stocks.filter(stock =>
+          stock.symbol.toLowerCase().includes(lowerSearchTerm) ||
+          stock.name.toLowerCase().includes(lowerSearchTerm) ||
+          stock.sector.toLowerCase().includes(lowerSearchTerm)
+        );
+      }
+      
+      setAllStocks(filteredStocks); // Set allStocks to the filtered results
+      setFilteredStocks(filteredStocks);
+      setStocksToDisplay(filteredStocks.slice(0, STOCKS_PER_PAGE));
+      setCurrentPage(1); // Reset to first page when filters change
     } catch (err: any) {
-      console.error("Failed to load initial stocks:", err);
+      console.error("Failed to load stocks:", err);
       if (err instanceof FMPApiError) {
         setError(err.message);
       } else {
@@ -127,6 +162,11 @@ const App: React.FC = () => {
       setIsInitialLoading(false);
     }
   }, []);
+
+  const loadInitialStocks = useCallback(async () => {
+    console.log("[App component] loadInitialStocks called.");
+    await loadStocksWithFilters({}, '');
+  }, [loadStocksWithFilters]);
   
   // Load filters and search from URL on initial mount
   useEffect(() => {
@@ -188,77 +228,24 @@ const App: React.FC = () => {
 
   const applyFiltersAndSearch = useCallback(() => {
     console.log("[App component] applyFiltersAndSearch called."); // Diagnostic log
-    let tempStocks = [...allStocks];
     
     // Basic NLP for "large cap value" - very rudimentary
     if (searchTerm.toLowerCase().includes("large cap value")) {
       // Corrected: use peRatio for 'value' to match filter definitions
-      setActiveFilters(prev => ({...prev, marketCap: 'large', peRatio: 'value' }));
+      setActiveFilters(prev => ({...prev, marketCap: 'midLarge', peRatio: 'value' }));
+      return; // Let the useEffect handle the actual filtering
     } // Add more NLP rules here if desired
 
-
-    // Apply search
-    if (searchTerm.trim() !== '') {
-      const lowerSearchTerm = searchTerm.toLowerCase();
-      tempStocks = tempStocks.filter(stock =>
-        stock.symbol.toLowerCase().includes(lowerSearchTerm) ||
-        stock.name.toLowerCase().includes(lowerSearchTerm) ||
-        stock.sector.toLowerCase().includes(lowerSearchTerm)
-      );
-    }
-    
-    // Apply filters
-    Object.entries(activeFilters).forEach(([filterKey, filterValue]) => {
-      if (filterValue) {
-        tempStocks = tempStocks.filter(stock => {
-          // Filter logic based on SubFilterGroupDef.id from constants.ts
-          if (filterKey === 'marketCap') return stock.marketCapCategory === filterValue;
-          if (filterKey === 'volume') return stock.volumeCategory === filterValue;
-          
-          if (filterKey === 'debtEquityRatio') return stock.debtCategory === filterValue; 
-          if (filterKey === 'peRatio') return stock.valuationCategory === filterValue; 
-          if (filterKey === 'roe') return stock.rotceCategory === filterValue; 
-          
-          if (filterKey === 'debtToEbitda') return stock.numericDebtEbitdaCategory === filterValue;
-          if (filterKey === 'fcfToNetIncome') return stock.numericFcfNiCategory === filterValue;
-          
-          if (filterKey === 'shareCountChange') return stock.shareCountCagrCategory === filterValue;
-          if (filterKey === 'evToEbit') return stock.numericEvEbitCategory === filterValue; 
-          if (filterKey === 'priceToNCAV') return stock.deepValueCategory === filterValue;
-          
-          if (filterKey === 'moatKws') return stock.moatKeywordsCategory === filterValue;
-          if (filterKey === 'insiderOwn') return stock.insiderOwnershipCategory === filterValue;
-          if (filterKey === 'netInsiderTrx') return stock.netInsiderBuysCategory === filterValue;
-          if (filterKey === 'gmTrend') return stock.grossMarginTrendCategory === filterValue;
-          if (filterKey === 'incRoic') return stock.incrementalRoicCategory === filterValue;
-          if (filterKey === 'rdFlags') return stock.redFlagsCategory === filterValue;
-
-          if (filterKey === 'qualitativeAndCatalysts') { 
-            if (filterValue === 'spinOff') { /* TODO: check stock.hasSpinOff */ return false; } 
-            if (filterValue === 'selfTender') { /* TODO: check stock.hasSelfTender */ return false; }
-            return true; 
-          }
-          
-          if (filterKey === 'liquiditySafety') {
-              // const sliderNumValue = Number(filterValue);
-              // TODO: Implement actual filtering based on sliderNumValue
-              return true; 
-          }
-          
-          return true; 
-        });
-      }
-    });
-
-    setFilteredStocks(tempStocks);
-    setStocksToDisplay(tempStocks.slice(0, STOCKS_PER_PAGE * currentPage)); 
-  }, [allStocks, searchTerm, activeFilters, currentPage]);
+    // Trigger server-side filtering by calling loadStocksWithFilters
+    loadStocksWithFilters(activeFilters, searchTerm);
+  }, [activeFilters, searchTerm, loadStocksWithFilters]);
 
 
   useEffect(() => {
     console.log("[App component] useEffect for applying filters/search."); // Diagnostic log
-    applyFiltersAndSearch();
-  }, [searchTerm, activeFilters, allStocks, applyFiltersAndSearch]);
+    // Use server-side filtering instead of client-side
+    loadStocksWithFilters(activeFilters, searchTerm);
+  }, [searchTerm, activeFilters, loadStocksWithFilters]);
 
 
   const handleLoadMore = useCallback(() => {

@@ -315,6 +315,122 @@ export const fetchStockListFromFMP = async (): Promise<Stock[]> => {
   }
 };
 
+// New function to fetch stock data from local MongoDB API with filtering
+export const fetchStockListFromMongoDB = async (
+  page: number = 1, 
+  limit: number = 15000, 
+  filters: {
+    marketCap?: string;
+    volume?: string;
+    debtEquityRatio?: string;
+    roe?: string;
+    peRatio?: string;
+    sector?: string;
+    debtToEbitda?: string;
+    fcfToNetIncome?: string;
+    // Legacy support for direct category names
+    marketCapCategory?: string;
+    volumeCategory?: string;
+    debtCategory?: string;
+    rotceCategory?: string;
+    valuationCategory?: string;
+  } = {}
+): Promise<Stock[]> => {
+  console.log("[stockService.ts] fetchStockListFromMongoDB called with filters:", filters);
+  
+  try {
+    // Build query parameters
+    const params = new URLSearchParams({
+      page: page.toString(),
+      limit: limit.toString()
+    });
+    
+    // Add filter parameters - support both new and legacy parameter names
+    Object.entries(filters).forEach(([key, value]) => {
+      if (value && value !== '') {
+        params.append(key, value);
+      }
+    });
+    
+    const localApiUrl = `/api/v1/stocks?${params.toString()}`;
+    console.log(`[stockService.ts] Fetching data from local API: ${localApiUrl}`);
+    
+    const response = await fetch(localApiUrl);
+    
+    if (!response.ok) {
+      const errorText = await response.text().catch(() => "Could not retrieve error details.");
+      console.error(`Local API error: ${response.status}. Response: ${errorText}`);
+      throw new FMPApiError(
+        `Local API request failed with status ${response.status}. Details: ${errorText}`, 
+        response.status
+      );
+    }
+    
+    const apiResponse = await response.json();
+    
+    if (!apiResponse.data || !Array.isArray(apiResponse.data)) {
+      console.error('Local API data is not in expected format:', apiResponse);
+      throw new FMPApiError('Received invalid data format from local API.', 500);
+    }
+    
+    console.log(`[stockService.ts] Received ${apiResponse.data.length} stocks from local MongoDB API.`);
+    
+    // Transform MongoDB data to match Stock interface
+    const stocks: Stock[] = apiResponse.data.map((mongoStock: any): Stock => {
+      return {
+        id: mongoStock.symbol,
+        symbol: mongoStock.symbol,
+        name: mongoStock.companyName || NA_STRING,
+        sector: mongoStock.sector || NA_STRING,
+        price: mongoStock.price || 0,
+        simpleScore: mongoStock.simpleScore || 0,
+        styleTags: [], // Can be calculated based on data if needed
+        
+        marketCap: mongoStock.marketCap || mongoStock.mktCap,
+        avgVolume: mongoStock.avgVolume || mongoStock.volAvg,
+        peRatioTTM: mongoStock.priceEarningsRatioTTM,
+        debtEquityRatioTTM: mongoStock.debtEquityRatioTTM,
+        returnOnEquityTTM: mongoStock.returnOnEquityTTM,
+        debtToEbitdaTTM: mongoStock.debtToEbitdaTTM,
+        enterpriseValueOverEBITDATTM: mongoStock.enterpriseValueOverEBITDATTM,
+        freeCashFlowPerShareTTM: mongoStock.freeCashFlowPerShareTTM,
+        netIncomePerShareTTM: mongoStock.netIncomePerShareTTM,
+
+        marketCapCategory: mongoStock.marketCapCategory || NA_STRING,
+        volumeCategory: mongoStock.volumeCategory || NA_STRING,
+        debtCategory: mongoStock.debtCategory || NA_STRING,
+        valuationCategory: mongoStock.valuationCategory || NA_STRING,
+        rotceCategory: mongoStock.rotceCategory || NA_STRING,
+        
+        debtEbitda: mongoStock.debtEbitda || NA_STRING,
+        evEbit: mongoStock.evEbit || NA_STRING,
+        fcfNi: mongoStock.fcfNi || NA_STRING,
+        rotce: mongoStock.rotce || NA_STRING,
+
+        numericDebtEbitdaCategory: mongoStock.numericDebtEbitdaCategory || '',
+        numericFcfNiCategory: mongoStock.numericFcfNiCategory || '',
+        
+        shareCountCagrCategory: NA_STRING,
+        numericEvEbitCategory: NA_STRING,
+        deepValueCategory: NA_STRING,
+        moatKeywordsCategory: NA_STRING,
+        insiderOwnershipCategory: NA_STRING,
+        netInsiderBuysCategory: NA_STRING,
+        grossMarginTrendCategory: NA_STRING,
+        incrementalRoicCategory: NA_STRING,
+        redFlagsCategory: NA_STRING,
+      };
+    });
+    
+    return stocks;
+    
+  } catch (error) {
+    if (error instanceof FMPApiError) throw error;
+    console.error("Error fetching stock list from MongoDB:", error);
+    throw new FMPApiError("An unexpected error occurred while fetching stock list from MongoDB.", 500);
+  }
+};
+
 
 const fetchHistoricalPriceData = async (symbol: string, days: number = 90): Promise<HistoricalPricePoint[]> => {
   if (!API_KEY) throw new FMPApiError("API Key not found for historical price data.", 401);

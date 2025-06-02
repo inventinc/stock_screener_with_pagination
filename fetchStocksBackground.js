@@ -1,7 +1,7 @@
 const axios = require('axios');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const Queue = require('p-queue').default; // Use .default for ES modules compatibility
+const Queue = require('p-queue');
 
 dotenv.config();
 
@@ -322,10 +322,12 @@ async function fetchAndSaveStocks() {
                     stockData.numericDebtEbitdaCategory = getNumericDebtEbitdaCategory(debtToEbitdaTTM);
                     stockData.numericFcfNiCategory = getNumericFcfNiCategory(fcfNiRatioNum);
 
-                     await Stock.findOneAndUpdate({ symbol: ticker }, stockData, { upsert: true, new: true });
-                         console.log(`Saved/Updated data for ${ticker}`);
+                    // Check if we have significant data before saving
+                    if (stockData.companyName || stockData.price || stockData.marketCap) {
+                        await Stock.findOneAndUpdate({ symbol: ticker }, stockData, { upsert: true, new: true });
+                        console.log(`Saved/Updated data for ${ticker}`);
                     } else {
-                         console.warn(`No significant data fetched for ${ticker}, skipping save.`);
+                        console.warn(`No significant data fetched for ${ticker}, skipping save.`);
                     }
 
 
