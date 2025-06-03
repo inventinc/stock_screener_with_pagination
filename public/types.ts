@@ -20,6 +20,7 @@ export interface Stock {
   id: string;
   symbol: string;
   name: string;
+  companyName: string; // Company name from API
   sector: string;
   price: number; 
   simpleScore?: number; // New simplified score
@@ -28,6 +29,7 @@ export interface Stock {
   marketCap?: number;
   avgVolume?: number;
   peRatioTTM?: number | null;
+  priceEarningsRatioTTM?: number | null; // P/E ratio from API
   debtEquityRatioTTM?: number | null;
   returnOnEquityTTM?: number | null; // Used as ROTCE proxy
   debtToEbitdaTTM?: number | null;
@@ -161,10 +163,11 @@ export interface KeyMetricVisibility {
   evEbitIndividual: boolean;
   fcfNiIndividual: boolean;
   rotceIndividual: boolean;
+  peRatioIndividual: boolean; // P/E Ratio
 }
 
 export interface DisplayMetricConfig {
-  id: keyof Stock | keyof KeyMetricVisibility | 'avgDebtEbitda' | 'avgEvEbit' | 'avgFcfNi' | 'avgRotce' | 'stocksPassingFilters' | 'debtEbitdaIndividual' | 'evEbitIndividual' | 'fcfNiIndividual' | 'rotceIndividual' | 'simpleScore';
+  id: keyof Stock | keyof KeyMetricVisibility | 'avgDebtEbitda' | 'avgEvEbit' | 'avgFcfNi' | 'avgRotce' | 'stocksPassingFilters' | 'debtEbitdaIndividual' | 'evEbitIndividual' | 'fcfNiIndividual' | 'rotceIndividual' | 'simpleScore' | 'peRatioIndividual';
   label: string;
   type: 'summary' | 'individual';
   dataKey?: keyof Stock; 

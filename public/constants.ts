@@ -15,6 +15,7 @@ export const INITIAL_KEY_METRICS_VISIBILITY: KeyMetricVisibility = {
   evEbitIndividual: true,
   fcfNiIndividual: true,
   rotceIndividual: true, // ROE proxy
+  peRatioIndividual: true, // P/E Ratio
 };
 
 export const DISPLAY_METRICS_CONFIG: DisplayMetricConfig[] = [
@@ -25,14 +26,15 @@ export const DISPLAY_METRICS_CONFIG: DisplayMetricConfig[] = [
   { id: 'avgRotce', label: 'Avg. ROE', type: 'summary' },
   
   { id: 'symbol', label: 'Symbol', type: 'individual', dataKey: 'symbol', alwaysVisible: true },
-  { id: 'name', label: 'Name', type: 'individual', dataKey: 'name', alwaysVisible: true },
+  { id: 'name', label: 'Name', type: 'individual', dataKey: 'companyName', alwaysVisible: true },
   { id: 'sector', label: 'Sector', type: 'individual', dataKey: 'sector', alwaysVisible: true },
   { id: 'price', label: 'Price', type: 'individual', dataKey: 'price', alwaysVisible: false, formatter: (val) => val ? `$${Number(val).toFixed(2)}` : 'N/A'},
-  { id: 'simpleScore', label: 'Score', type: 'individual', dataKey: 'simpleScore', alwaysVisible: false }, // Added
-  { id: 'debtEbitdaIndividual', label: 'Debt/EBITDA', type: 'individual', dataKey: 'debtEbitda', alwaysVisible: false },
-  { id: 'evEbitIndividual', label: 'EV/EBITDA', type: 'individual', dataKey: 'evEbit', alwaysVisible: false }, // Note: FMP provides EV/EBITDA
-  { id: 'fcfNiIndividual', label: 'FCF/NI', type: 'individual', dataKey: 'fcfNi', alwaysVisible: false },
-  { id: 'rotceIndividual', label: 'ROE', type: 'individual', dataKey: 'rotce', alwaysVisible: false }, // Using ROE as proxy
+  { id: 'simpleScore', label: 'Score', type: 'individual', dataKey: 'simpleScore', alwaysVisible: false },
+  { id: 'debtEbitdaIndividual', label: 'Debt/Equity', type: 'individual', dataKey: 'debtEquityRatioTTM', alwaysVisible: false, formatter: (val) => val ? `${(Number(val)).toFixed(2)}x` : 'N/A' },
+  { id: 'evEbitIndividual', label: 'EV/EBITDA', type: 'individual', dataKey: 'enterpriseValueOverEBITDATTM', alwaysVisible: false, formatter: (val) => val ? `${Number(val).toFixed(1)}x` : 'N/A' },
+  { id: 'fcfNiIndividual', label: 'FCF/Share', type: 'individual', dataKey: 'freeCashFlowPerShareTTM', alwaysVisible: false, formatter: (val) => val ? `$${Number(val).toFixed(2)}` : 'N/A' },
+  { id: 'rotceIndividual', label: 'ROE', type: 'individual', dataKey: 'returnOnEquityTTM', alwaysVisible: false, formatter: (val) => val ? `${(Number(val) * 100).toFixed(1)}%` : 'N/A' },
+  { id: 'peRatioIndividual', label: 'P/E Ratio', type: 'individual', dataKey: 'priceEarningsRatioTTM', alwaysVisible: false, formatter: (val) => val ? `${Number(val).toFixed(1)}x` : 'N/A' },
 ];
 
 export const STOCK_DATA_BASE = [ /* Fallback data, not primary */ ];
