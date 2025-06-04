@@ -1,7 +1,8 @@
 const axios = require('axios');
 const mongoose = require('mongoose');
 const dotenv = require('dotenv');
-const Queue = require('p-queue');
+// p-queue v6 exposes the constructor on the default export
+const PQueue = require('p-queue').default;
 
 dotenv.config();
 
@@ -90,7 +91,7 @@ const FMP_API_KEY = process.env.FMP_API_KEY;
 // Concurrency can be up to 50. Let's set it a bit lower to be safe, say 40.
 // The interval is 1000ms (1 second). The intervalCap is the max number of jobs that can run within the interval.
 // So, concurrency of 40 with intervalCap 40 and interval 1000ms means max 40 jobs per second.
-const queue = new Queue({ concurrency: 40, intervalCap: 40, interval: 1000 });
+const queue = new PQueue({ concurrency: 40, intervalCap: 40, interval: 1000 });
 
 // Helper function to safely get a number or null
 const safeNum = (val) => (typeof val === 'number' && !isNaN(val) ? val : null);
@@ -352,4 +353,9 @@ async function fetchAndSaveStocks() {
 
 // Export the function if you want to call it from another script,
 // or call it directly here to run when the script is executed.
-fetchAndSaveStocks(); // This will run the function when you execute node fetchStocksBackground.js
+if (require.main === module) {
+    // Run immediately if the script is executed directly
+    fetchAndSaveStocks();
+}
+
+module.exports = { fetchAndSaveStocks };
